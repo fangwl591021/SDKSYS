@@ -250,6 +250,44 @@ function renderAppHtml(env, url) {
       border-top: 1px solid var(--line);
     }
     .member.visible { display: block; }
+    .copy-row {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+    .copy-row input {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--ink);
+      background: white;
+    }
+    .secondary-button {
+      min-height: 40px;
+      background: #233142;
+      font-size: 14px;
+    }
+    .secondary-button:hover { background: #111827; }
+    .downlines {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .downline-item {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    .downline-item small {
+      display: block;
+      color: var(--muted);
+      margin-top: 2px;
+    }
     code {
       padding: 2px 6px;
       border-radius: 6px;
@@ -284,6 +322,12 @@ function renderAppHtml(env, url) {
           <div class="row"><span>會員編號</span><strong id="memberNo"></strong></div>
           <div class="row"><span>我的推薦碼</span><strong id="myReferralCode"></strong></div>
           <div class="row"><span>歸屬狀態</span><strong id="attribution"></strong></div>
+          <div class="copy-row">
+            <input id="referralLink" type="text" readonly aria-label="Referral link">
+            <button class="secondary-button" id="copyReferralLink" type="button">Copy referral link</button>
+          </div>
+          <div class="row"><span>直接下線</span><strong id="downlineCount">0</strong></div>
+          <div class="downlines" id="downlines"></div>
         </div>
       </aside>
     </div>
@@ -340,9 +384,48 @@ function renderAppHtml(env, url) {
       document.getElementById("memberNo").textContent = result.member.memberNo;
       document.getElementById("myReferralCode").textContent = result.member.referralCode;
       document.getElementById("attribution").textContent = result.attribution.result || result.attribution.status;
+      const referralLink = new URL(location.href);
+      referralLink.searchParams.set("storeCode", config.storeCode);
+      referralLink.searchParams.set("ref", result.member.referralCode);
+      document.getElementById("referralLink").value = referralLink.toString();
+      renderDownlines(result.downlines || []);
       memberEl.classList.add("visible");
       setStatus("登入完成");
     }
+
+    function renderDownlines(downlines) {
+      document.getElementById("downlineCount").textContent = String(downlines.length);
+      const list = document.getElementById("downlines");
+      list.innerHTML = "";
+      if (!downlines.length) {
+        const empty = document.createElement("div");
+        empty.className = "downline-item";
+        empty.textContent = "目前沒有直接下線";
+        list.appendChild(empty);
+        return;
+      }
+      for (const item of downlines) {
+        const node = document.createElement("div");
+        node.className = "downline-item";
+        node.textContent = item.memberNo || item.tenantMemberId;
+        const small = document.createElement("small");
+        small.textContent = item.assignedAt ? "歸屬時間 " + item.assignedAt : "已歸屬";
+        node.appendChild(small);
+        list.appendChild(node);
+      }
+    }
+
+    document.getElementById("copyReferralLink").addEventListener("click", async () => {
+      const input = document.getElementById("referralLink");
+      input.select();
+      try {
+        await navigator.clipboard.writeText(input.value);
+        setStatus("推薦連結已複製");
+      } catch (error) {
+        document.execCommand("copy");
+        setStatus("推薦連結已複製");
+      }
+    });
 
     loginButton.addEventListener("click", async () => {
       if (!config.liffId) return;
@@ -422,13 +505,36 @@ async function handleLineLogin({ env, storage, payload }) {
     releaseMonths,
     now,
   });
+  const downlines = await getReferralDownlines(storage, tenant.tenantId, tenantMemberId);
 
   return {
     ok: true,
     tenant: publicTenant(tenant),
     member: publicMember(member),
     attribution,
+    downlines,
   };
+}
+
+async function getReferralDownlines(storage, tenantId, parentTenantMemberId) {
+  const assignments = await storage.list(`affiliate-assignments/${tenantId}/`, 1000);
+  const downlines = [];
+
+  for (const item of assignments.list) {
+    const assignment = (await storage.getJson(storage.relativeKey(item.key))).value;
+    if (!assignment || assignment.status !== "active" || assignment.parentTenantMemberId !== parentTenantMemberId) {
+      continue;
+    }
+    const member = (await storage.getJson(`tenant-members/${tenantId}/${assignment.tenantMemberId}.json`)).value;
+    downlines.push({
+      tenantMemberId: assignment.tenantMemberId,
+      memberNo: member?.memberNo || null,
+      status: member?.status || "active",
+      assignedAt: assignment.assignedAt,
+    });
+  }
+
+  return downlines.sort((a, b) => String(b.assignedAt || "").localeCompare(String(a.assignedAt || "")));
 }
 
 async function upsertTenant(storage, payload) {
@@ -572,6 +678,12 @@ function createWasabiClient(env) {
   const basePrefix = normalizePrefix(env.WASABI_BASE_PREFIX || "sdksys");
 
   return {
+    relativeKey(key) {
+      const normalized = normalizePrefix(key);
+      const prefix = `${basePrefix}/`;
+      return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
+    },
+
     async head(relativeKey) {
       const key = joinKey(basePrefix, relativeKey);
       const response = await signedWasabiFetch(env, { method: "HEAD", endpoint, region, bucket, key });
