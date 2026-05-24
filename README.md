@@ -27,6 +27,7 @@ npx.cmd wrangler secret put MEMBER_NO_SECRET
 npx.cmd wrangler secret put SYSTEM_API_KEY
 npx.cmd wrangler secret put LINE_LOGIN_CHANNEL_ID
 npx.cmd wrangler secret put LINE_LIFF_ID
+npx.cmd wrangler secret put OPENAI_API_KEY
 ```
 
 ## Storage Environment
@@ -78,3 +79,15 @@ POST /api/auth/line-login
   "referralCode": "OPTIONAL_REFERRAL_CODE"
 }
 ```
+
+## Card SDK V1
+
+The first card flow is available inside:
+
+```text
+https://sdksys.fangwl591021.workers.dev/app?storeCode=DEMO
+```
+
+After LINE Login, the member can photo/upload a card image, run AI recognition, edit fields, save, and share a public card page. V1 uses Wasabi only; it does not use R2.
+
+See [docs/card-sdk-plan.md](docs/card-sdk-plan.md).

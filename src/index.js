@@ -39,6 +39,26 @@ export default {
         return html(renderAppHtml(env, url));
       }
 
+      if (url.pathname.startsWith("/card/") && request.method === "GET") {
+        const storage = createWasabiClient(env);
+        const slug = cleanSlug(decodeURIComponent(url.pathname.slice("/card/".length)));
+        return html(await renderPublicCardHtml(storage, slug, url.origin));
+      }
+
+      if (url.pathname.startsWith("/asset/") && request.method === "GET") {
+        const storage = createWasabiClient(env);
+        const key = decodeURIComponent(url.pathname.slice("/asset/".length));
+        if (!normalizePrefix(key).startsWith("card-assets/")) return text("not_found", { status: 404 });
+        const asset = await storage.getObject(key);
+        if (!asset.exists) return text("not_found", { status: 404 });
+        return withCors(new Response(asset.body, {
+          headers: {
+            "content-type": asset.contentType || "application/octet-stream",
+            "cache-control": "public, max-age=31536000, immutable",
+          },
+        }));
+      }
+
       if (url.pathname === "/api/system/storage" && request.method === "GET") {
         return json({
           provider: "wasabi",
@@ -64,6 +84,24 @@ export default {
         const storage = createWasabiClient(env);
         const result = await handleLineLogin({ request, env, storage, payload });
         return json(result);
+      }
+
+      if (url.pathname === "/api/cards/me" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        return json(await getMyBusinessCard({ env, storage, payload, origin: url.origin }));
+      }
+
+      if (url.pathname === "/api/cards/recognize" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        return json(await recognizeBusinessCard({ env, storage, payload, origin: url.origin }));
+      }
+
+      if (url.pathname === "/api/cards/upsert" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        return json(await upsertBusinessCard({ env, storage, payload, origin: url.origin }));
       }
 
       if (url.pathname === "/api/admin/tenants/upsert" && request.method === "POST") {
@@ -288,6 +326,81 @@ function renderAppHtml(env, url) {
       color: var(--muted);
       margin-top: 2px;
     }
+    .card-sdk {
+      display: none;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .card-sdk.visible { display: block; }
+    .form-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .field label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .field input, .field textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      color: var(--ink);
+      background: white;
+      font: inherit;
+    }
+    .field textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .file-picker {
+      display: block;
+      width: 100%;
+      border: 1px dashed #9aa8b4;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfdff;
+      color: var(--muted);
+    }
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .card-preview {
+      display: none;
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+    }
+    .card-preview.visible { display: block; }
+    .card-preview img {
+      width: 100%;
+      max-height: 180px;
+      object-fit: cover;
+      display: block;
+      background: var(--soft);
+    }
+    .card-preview-body {
+      padding: 14px;
+    }
+    .card-preview-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+    .card-preview-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
     code {
       padding: 2px 6px;
       border-radius: 6px;
@@ -329,6 +442,36 @@ function renderAppHtml(env, url) {
           <div class="row"><span>直接下線</span><strong id="downlineCount">0</strong></div>
           <div class="downlines" id="downlines"></div>
         </div>
+        <div class="card-sdk" id="cardSdk">
+          <h2>我的名片</h2>
+          <p>拍照或上傳名片，AI 只抽欄位，圖片與資料都存到 Wasabi。</p>
+          <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
+          <div class="button-row">
+            <button class="secondary-button" id="recognizeCardButton" type="button">AI 辨識</button>
+            <button class="secondary-button" id="saveCardButton" type="button">儲存名片</button>
+          </div>
+          <div class="form-grid" style="margin-top: 14px;">
+            <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
+            <div class="field"><label for="cardTitle">職稱</label><input id="cardTitle"></div>
+            <div class="field"><label for="cardCompany">公司</label><input id="cardCompany" autocomplete="organization"></div>
+            <div class="field"><label for="cardPhone">電話</label><input id="cardPhone" autocomplete="tel"></div>
+            <div class="field"><label for="cardEmail">Email</label><input id="cardEmail" autocomplete="email"></div>
+            <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
+            <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
+            <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
+          </div>
+          <div class="copy-row">
+            <input id="publicCardUrl" type="text" readonly aria-label="Public card URL">
+            <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
+          </div>
+          <div class="card-preview" id="cardPreview">
+            <img id="cardPreviewImage" alt="">
+            <div class="card-preview-body">
+              <div class="card-preview-title" id="cardPreviewTitle"></div>
+              <div class="card-preview-meta" id="cardPreviewMeta"></div>
+            </div>
+          </div>
+        </div>
       </aside>
     </div>
   </main>
@@ -337,6 +480,11 @@ function renderAppHtml(env, url) {
     const statusEl = document.getElementById("status");
     const loginButton = document.getElementById("loginButton");
     const memberEl = document.getElementById("member");
+    const cardSdkEl = document.getElementById("cardSdk");
+    let currentIdToken = "";
+    let currentMember = null;
+    let currentCard = null;
+    let selectedCardImage = "";
 
     function setStatus(text) {
       statusEl.textContent = text;
@@ -366,6 +514,7 @@ function renderAppHtml(env, url) {
         setStatus("無法取得 LINE idToken，請重新登入。");
         return;
       }
+      currentIdToken = idToken;
       setStatus("正在建立會員身份...");
       const response = await fetch("/api/auth/line-login", {
         method: "POST",
@@ -389,8 +538,177 @@ function renderAppHtml(env, url) {
       referralLink.searchParams.set("ref", result.member.referralCode);
       document.getElementById("referralLink").value = referralLink.toString();
       renderDownlines(result.downlines || []);
+      currentMember = result.member;
       memberEl.classList.add("visible");
+      cardSdkEl.classList.add("visible");
+      await loadMyCard();
       setStatus("登入完成");
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function imageToCanvasDataUrl(src, maxSize, quality) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
+
+    async function compressCardImage(file, maxSize = 1280) {
+      const dataUrl = await readFileAsDataUrl(file);
+      let quality = 0.86;
+      let output = await imageToCanvasDataUrl(dataUrl, maxSize, quality);
+      while (output.length > 950000 && quality > 0.42) {
+        quality -= 0.12;
+        output = await imageToCanvasDataUrl(dataUrl, maxSize, quality);
+      }
+      return output;
+    }
+
+    function getCardFormData() {
+      return {
+        name: document.getElementById("cardName").value.trim(),
+        title: document.getElementById("cardTitle").value.trim(),
+        company: document.getElementById("cardCompany").value.trim(),
+        phone: document.getElementById("cardPhone").value.trim(),
+        email: document.getElementById("cardEmail").value.trim(),
+        website: document.getElementById("cardWebsite").value.trim(),
+        address: document.getElementById("cardAddress").value.trim(),
+        intro: document.getElementById("cardIntro").value.trim(),
+      };
+    }
+
+    function fillCardForm(card) {
+      card = card || {};
+      document.getElementById("cardName").value = card.name || "";
+      document.getElementById("cardTitle").value = card.title || "";
+      document.getElementById("cardCompany").value = card.company || "";
+      document.getElementById("cardPhone").value = card.phone || "";
+      document.getElementById("cardEmail").value = card.email || "";
+      document.getElementById("cardWebsite").value = card.website || "";
+      document.getElementById("cardAddress").value = card.address || "";
+      document.getElementById("cardIntro").value = card.intro || "";
+      document.getElementById("publicCardUrl").value = card.publicUrl || "";
+      renderCardPreview(card);
+    }
+
+    function renderCardPreview(card) {
+      const preview = document.getElementById("cardPreview");
+      if (!card || (!card.name && !card.company && !card.imageUrl)) {
+        preview.classList.remove("visible");
+        return;
+      }
+      document.getElementById("cardPreviewImage").src = card.imageUrl || "";
+      document.getElementById("cardPreviewImage").style.display = card.imageUrl ? "block" : "none";
+      document.getElementById("cardPreviewTitle").textContent = card.name || "未命名名片";
+      document.getElementById("cardPreviewMeta").textContent = [card.company, card.title, card.phone, card.email].filter(Boolean).join(" / ");
+      preview.classList.add("visible");
+    }
+
+    async function loadMyCard() {
+      if (!currentIdToken) return;
+      const response = await fetch("/api/cards/me", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idToken: currentIdToken, storeCode: config.storeCode }),
+      });
+      const result = await response.json();
+      if (result.ok && result.card) {
+        currentCard = result.card;
+        fillCardForm(currentCard);
+      }
+    }
+
+    async function recognizeSelectedCard() {
+      const file = document.getElementById("cardImageFile").files[0];
+      if (!file) {
+        setStatus("請先拍照或上傳名片圖片");
+        return;
+      }
+      setStatus("正在壓縮圖片...");
+      selectedCardImage = await compressCardImage(file);
+      setStatus("AI 正在辨識名片...");
+      const response = await fetch("/api/cards/recognize", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          idToken: currentIdToken,
+          storeCode: config.storeCode,
+          imageDataUrl: selectedCardImage,
+        }),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        setStatus(result.message || result.error || "名片辨識失敗");
+        return;
+      }
+      currentCard = { ...(currentCard || {}), ...(result.card || {}) };
+      fillCardForm(currentCard);
+      setStatus("辨識完成，可以編輯後儲存");
+    }
+
+    async function saveBusinessCard() {
+      if (!currentIdToken) return;
+      const card = { ...(currentCard || {}), ...getCardFormData() };
+      setStatus("正在儲存名片...");
+      const response = await fetch("/api/cards/upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          idToken: currentIdToken,
+          storeCode: config.storeCode,
+          card,
+          imageDataUrl: selectedCardImage || undefined,
+        }),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        setStatus(result.message || result.error || "名片儲存失敗");
+        return;
+      }
+      currentCard = result.card;
+      selectedCardImage = "";
+      fillCardForm(currentCard);
+      setStatus("名片已儲存");
+    }
+
+    async function shareBusinessCard() {
+      const url = document.getElementById("publicCardUrl").value;
+      if (!url) {
+        setStatus("請先儲存名片");
+        return;
+      }
+      const text = (currentCard?.name ? currentCard.name + " 的名片\\n" : "我的名片\\n") + url;
+      try {
+        if (window.liff && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
+          await liff.shareTargetPicker([{ type: "text", text }]);
+          setStatus("已開啟 LINE 分享");
+          return;
+        }
+      } catch (error) {}
+      try {
+        await navigator.clipboard.writeText(url);
+        setStatus("名片連結已複製");
+      } catch (error) {
+        location.href = "https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(url);
+      }
     }
 
     function renderDownlines(downlines) {
@@ -435,6 +753,10 @@ function renderAppHtml(env, url) {
       }
       await submitIdToken();
     });
+
+    document.getElementById("recognizeCardButton").addEventListener("click", recognizeSelectedCard);
+    document.getElementById("saveCardButton").addEventListener("click", saveBusinessCard);
+    document.getElementById("shareCardButton").addEventListener("click", shareBusinessCard);
 
     boot();
   </script>
@@ -514,6 +836,295 @@ async function handleLineLogin({ env, storage, payload }) {
     attribution,
     downlines,
   };
+}
+
+async function getSessionContext({ env, storage, payload }) {
+  assertString(payload.idToken, "idToken");
+  const lineProfile = await verifyLineIdToken(env, payload.idToken);
+  const tenant = await resolveTenant(storage, payload);
+  const userId = await createUserId(lineProfile.sub, env.MEMBER_NO_SECRET);
+  const tenantMemberId = await createTenantMemberId(tenant.tenantId, userId, env.MEMBER_NO_SECRET);
+  const member = (await storage.getJson(`tenant-members/${tenant.tenantId}/${tenantMemberId}.json`)).value;
+  if (!member || member.status !== "active") {
+    throw httpError(401, "Login is required before card operations", "login_required");
+  }
+  return { lineProfile, tenant, userId, tenantMemberId, member };
+}
+
+async function getMyBusinessCard({ env, storage, payload, origin }) {
+  const session = await getSessionContext({ env, storage, payload });
+  const card = await readBusinessCard(storage, session.tenant.tenantId, session.tenantMemberId, origin);
+  return { ok: true, card };
+}
+
+async function recognizeBusinessCard({ env, storage, payload, origin }) {
+  await getSessionContext({ env, storage, payload });
+  assertString(payload.imageDataUrl, "imageDataUrl");
+  assertSecret(env.OPENAI_API_KEY, "OPENAI_API_KEY");
+  validateImageDataUrl(payload.imageDataUrl);
+
+  const extracted = await callOpenAICardOcr(env, payload.imageDataUrl);
+  const card = normalizeBusinessCard(extracted, origin);
+  return { ok: true, card };
+}
+
+async function upsertBusinessCard({ env, storage, payload, origin }) {
+  const session = await getSessionContext({ env, storage, payload });
+  const now = new Date().toISOString();
+  const existing = (await storage.getJson(`business-cards/${session.tenant.tenantId}/${session.tenantMemberId}.json`)).value || {};
+  const input = normalizeBusinessCard(payload.card || {}, origin);
+  const slug = existing.publicSlug || createCardSlug(session.member.memberNo);
+  let imageUrl = existing.imageUrl || "";
+  let imageKey = existing.imageKey || "";
+
+  if (payload.imageDataUrl) {
+    validateImageDataUrl(payload.imageDataUrl);
+    const uploaded = await uploadCardAsset({
+      storage,
+      tenantId: session.tenant.tenantId,
+      tenantMemberId: session.tenantMemberId,
+      imageDataUrl: payload.imageDataUrl,
+      origin,
+    });
+    imageUrl = uploaded.url;
+    imageKey = uploaded.key;
+  } else if (input.imageUrl) {
+    imageUrl = input.imageUrl;
+  }
+
+  const card = {
+    tenantId: session.tenant.tenantId,
+    tenantMemberId: session.tenantMemberId,
+    memberNo: session.member.memberNo,
+    publicSlug: slug,
+    publicUrl: `${origin}/card/${encodeURIComponent(slug)}`,
+    name: input.name || session.lineProfile.name || "",
+    title: input.title || "",
+    company: input.company || session.tenant.name || "",
+    phone: input.phone || "",
+    email: input.email || "",
+    website: input.website || "",
+    address: input.address || "",
+    intro: input.intro || "",
+    imageUrl,
+    imageKey,
+    status: "published",
+    updatedAt: now,
+    createdAt: existing.createdAt || now,
+  };
+
+  await storage.putJson(`business-cards/${session.tenant.tenantId}/${session.tenantMemberId}.json`, card);
+  await storage.putJson(`card-index/public-slugs/${slug}.json`, {
+    tenantId: session.tenant.tenantId,
+    tenantMemberId: session.tenantMemberId,
+    publicSlug: slug,
+    status: "published",
+    updatedAt: now,
+  });
+
+  return { ok: true, card };
+}
+
+async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
+  const card = (await storage.getJson(`business-cards/${tenantId}/${tenantMemberId}.json`)).value;
+  if (!card) return null;
+  return {
+    ...card,
+    publicUrl: card.publicUrl || `${origin}/card/${encodeURIComponent(card.publicSlug)}`,
+  };
+}
+
+async function renderPublicCardHtml(storage, slug, origin) {
+  const index = (await storage.getJson(`card-index/public-slugs/${slug}.json`)).value;
+  if (!index || index.status !== "published") {
+    return renderPublicCardShell(null, origin);
+  }
+  const card = await readBusinessCard(storage, index.tenantId, index.tenantMemberId, origin);
+  return renderPublicCardShell(card, origin);
+}
+
+function renderPublicCardShell(card, origin) {
+  if (!card) {
+    return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Card not found</title></head><body style="font-family:system-ui;padding:32px;">Card not found</body></html>`;
+  }
+  const title = card.name || "Business Card";
+  const meta = [card.company, card.title].filter(Boolean).join(" / ");
+  const phoneHref = card.phone ? `tel:${card.phone.replace(/[^0-9+]/g, "")}` : "";
+  const emailHref = card.email ? `mailto:${card.email}` : "";
+  const websiteHref = normalizeUrl(card.website);
+  const mapHref = card.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}` : "";
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(meta || card.intro || "")}">
+  ${card.imageUrl ? `<meta property="og:image" content="${escapeHtml(card.imageUrl)}">` : ""}
+  <style>
+    body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2933; background:#f3f7f8; }
+    main { width:min(460px, calc(100% - 28px)); margin:0 auto; padding:24px 0; }
+    .card { background:white; border:1px solid #d8e0e8; border-radius:8px; overflow:hidden; box-shadow:0 18px 44px rgba(25,42,61,.12); }
+    .hero { width:100%; max-height:280px; object-fit:cover; display:block; background:#eef3f5; }
+    .body { padding:22px; }
+    h1 { margin:0; font-size:32px; letter-spacing:0; line-height:1.1; }
+    .meta { margin-top:8px; color:#607080; line-height:1.5; }
+    .intro { margin-top:18px; white-space:pre-line; line-height:1.7; color:#364756; }
+    .actions { display:grid; gap:10px; margin-top:20px; }
+    a { display:block; text-decoration:none; text-align:center; padding:12px 14px; border-radius:8px; font-weight:800; background:#06c755; color:white; }
+    a.secondary { background:#233142; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      ${card.imageUrl ? `<img class="hero" src="${escapeHtml(card.imageUrl)}" alt="">` : ""}
+      <div class="body">
+        <h1>${escapeHtml(title)}</h1>
+        <div class="meta">${escapeHtml(meta)}</div>
+        <div class="intro">${escapeHtml(card.intro || "")}</div>
+        <div class="actions">
+          ${phoneHref ? `<a href="${escapeHtml(phoneHref)}">撥打電話</a>` : ""}
+          ${emailHref ? `<a class="secondary" href="${escapeHtml(emailHref)}">寄送 Email</a>` : ""}
+          ${websiteHref ? `<a class="secondary" href="${escapeHtml(websiteHref)}">開啟網站</a>` : ""}
+          ${mapHref ? `<a class="secondary" href="${escapeHtml(mapHref)}">查看地址</a>` : ""}
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+async function callOpenAICardOcr(env, imageDataUrl) {
+  const body = {
+    model: env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-4.1-mini",
+    input: [{
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            "Extract business card fields from this image.",
+            "Return only strict JSON with these keys:",
+            "name,title,company,phone,email,website,address,intro.",
+            "Use empty strings when unknown. Do not invent data.",
+            "intro should be a concise one or two sentence service summary if visible."
+          ].join(" "),
+        },
+        { type: "input_image", image_url: imageDataUrl, detail: "high" },
+      ],
+    }],
+    max_output_tokens: 800,
+  };
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.error) {
+    throw httpError(502, result.error?.message || `OpenAI HTTP ${response.status}`, "openai_error");
+  }
+  const text = extractResponseText(result);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw httpError(502, "OpenAI did not return JSON", "openai_parse_error");
+  try {
+    return JSON.parse(match[0]);
+  } catch {
+    throw httpError(502, "OpenAI returned invalid JSON", "openai_parse_error");
+  }
+}
+
+function extractResponseText(result) {
+  if (typeof result.output_text === "string") return result.output_text;
+  const chunks = [];
+  for (const item of result.output || []) {
+    for (const part of item.content || []) {
+      if (part.type === "output_text" && part.text) chunks.push(part.text);
+      else if (typeof part.text === "string") chunks.push(part.text);
+    }
+  }
+  return chunks.join("\n");
+}
+
+async function uploadCardAsset({ storage, tenantId, tenantMemberId, imageDataUrl, origin }) {
+  const parsed = parseImageDataUrl(imageDataUrl);
+  const now = new Date();
+  const yyyy = String(now.getUTCFullYear());
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const ext = parsed.contentType.includes("png") ? "png" : "jpg";
+  const key = `card-assets/${tenantId}/${tenantMemberId}/${yyyy}/${mm}/${safeTime(now.toISOString())}-${randomId()}.${ext}`;
+  await storage.putObject(key, parsed.bytes, parsed.contentType);
+  return {
+    key,
+    url: `${origin}/asset/${encodeURIComponent(key).replace(/%2F/g, "/")}`,
+  };
+}
+
+function normalizeBusinessCard(source, origin) {
+  source = source || {};
+  return {
+    publicUrl: source.publicUrl || "",
+    publicSlug: source.publicSlug || "",
+    name: cleanText(source.name, 80),
+    title: cleanText(source.title, 100),
+    company: cleanText(source.company, 120),
+    phone: cleanText(source.phone, 60),
+    email: cleanText(source.email, 120),
+    website: cleanText(source.website, 240),
+    address: cleanText(source.address, 240),
+    intro: cleanText(source.intro, 600),
+    imageUrl: source.imageUrl && String(source.imageUrl).startsWith(origin) ? String(source.imageUrl) : "",
+  };
+}
+
+function validateImageDataUrl(value) {
+  const parsed = parseImageDataUrl(value);
+  if (!["image/jpeg", "image/png", "image/webp"].includes(parsed.contentType)) {
+    throw httpError(400, "Only jpg, png, and webp images are allowed", "invalid_image_type");
+  }
+  if (parsed.bytes.length > 1_200_000) {
+    throw httpError(413, "Image is too large after compression", "image_too_large");
+  }
+}
+
+function parseImageDataUrl(value) {
+  const match = String(value || "").match(/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw httpError(400, "imageDataUrl must be a base64 data URL", "invalid_image");
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return {
+    contentType: match[1].toLowerCase(),
+    bytes,
+  };
+}
+
+function createCardSlug(memberNo) {
+  return cleanSlug(String(memberNo || `card-${randomId()}`).toLowerCase());
+}
+
+function cleanSlug(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-").slice(0, 80);
+}
+
+function cleanText(value, maxLength) {
+  return String(value || "").replace(/\u0000/g, "").trim().slice(0, maxLength);
+}
+
+function normalizeUrl(value) {
+  const url = String(value || "").trim();
+  if (!url) return "";
+  if (/^(https?:|mailto:|tel:|line:)/i.test(url)) return url;
+  return `https://${url}`;
 }
 
 async function getReferralDownlines(storage, tenantId, parentTenantMemberId) {
@@ -708,6 +1319,21 @@ function createWasabiClient(env) {
       return { ok: true, exists: true, key, value: await response.json() };
     },
 
+    async getObject(relativeKey) {
+      const key = joinKey(basePrefix, relativeKey);
+      const response = await signedWasabiFetch(env, { method: "GET", endpoint, region, bucket, key });
+      if (response.status === 404) return { ok: true, exists: false, key, body: null };
+      if (!response.ok) throw await wasabiError(response);
+      return {
+        ok: true,
+        exists: true,
+        key,
+        body: await response.arrayBuffer(),
+        contentType: response.headers.get("content-type"),
+        size: Number(response.headers.get("content-length") || 0),
+      };
+    },
+
     async putJson(relativeKey, value) {
       const key = joinKey(basePrefix, relativeKey);
       const body = JSON.stringify(value, null, 2);
@@ -719,6 +1345,21 @@ function createWasabiClient(env) {
         key,
         body,
         contentType: "application/json; charset=utf-8",
+      });
+      if (!response.ok) throw await wasabiError(response);
+      return { ok: true, key, etag: trimQuotes(response.headers.get("etag")) };
+    },
+
+    async putObject(relativeKey, bytes, contentType) {
+      const key = joinKey(basePrefix, relativeKey);
+      const response = await signedWasabiFetch(env, {
+        method: "PUT",
+        endpoint,
+        region,
+        bucket,
+        key,
+        body: bytes,
+        contentType: contentType || "application/octet-stream",
       });
       if (!response.ok) throw await wasabiError(response);
       return { ok: true, key, etag: trimQuotes(response.headers.get("etag")) };
@@ -749,7 +1390,7 @@ async function signedWasabiFetch(env, options) {
   const now = new Date();
   const amzDate = toAmzDate(now);
   const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = await sha256Hex(options.body || "");
+  const payloadHash = await sha256HexPayload(options.body || "");
   const host = new URL(options.endpoint).host;
   const encodedKey = encodeS3Key(options.key);
   const pathname = `/${options.bucket}${encodedKey ? `/${encodedKey}` : ""}`;
@@ -987,6 +1628,18 @@ async function hmacHex(key, value) {
 async function sha256Hex(value) {
   const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return hex(new Uint8Array(buffer));
+}
+
+async function sha256HexPayload(value) {
+  if (value instanceof Uint8Array) {
+    const buffer = await crypto.subtle.digest("SHA-256", value);
+    return hex(new Uint8Array(buffer));
+  }
+  if (value instanceof ArrayBuffer) {
+    const buffer = await crypto.subtle.digest("SHA-256", value);
+    return hex(new Uint8Array(buffer));
+  }
+  return sha256Hex(String(value || ""));
 }
 
 function hex(bytes) {
