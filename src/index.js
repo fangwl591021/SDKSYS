@@ -11,10 +11,13 @@ const HTML_HEADERS = {
 };
 
 const DEFAULT_RELEASE_MONTHS = 6;
-const CARD_LAYOUTS = ["standard", "free", "square"];
+const CARD_LAYOUTS = ["standard", "full", "square"];
 const CARD_LAYOUT_ALIASES = {
+  landscape: "standard",
   poster: "standard",
-  classic: "free",
+  portrait: "full",
+  classic: "full",
+  free: "full",
   links: "square",
 };
 const DEFAULT_CARD_LAYOUT = "standard";
@@ -190,8 +193,6 @@ function renderAppHtml(env, url) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SDKSYS Member</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -457,79 +458,152 @@ function renderAppHtml(env, url) {
       color: #dc2626;
       border-color: #ffe0e5;
     }
-    .crop-modal {
-      position: fixed;
-      inset: 0;
-      z-index: 50;
-      display: none;
-      align-items: stretch;
-      justify-content: center;
-      background: rgba(15, 23, 42, 0.72);
-    }
-    .crop-modal.visible { display: flex; }
-    .crop-sheet {
-      width: min(100%, 520px);
-      height: 100%;
+    .ecard-panel {
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr) auto;
-      background: #ffffff;
+      gap: 18px;
+      margin-top: 14px;
+      padding: 16px;
+      border: 1px solid #e5edf5;
+      border-radius: 18px;
+      background: #f8fafc;
     }
-    .crop-head {
+    .ecard-block {
+      display: grid;
+      gap: 10px;
+    }
+    .ecard-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 800;
+    }
+    .ecard-segment {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding: 5px;
+      border-radius: 14px;
+      background: #e9eef4;
+    }
+    .ecard-segment label {
+      min-width: 0;
+      cursor: pointer;
+    }
+    .ecard-segment input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .ecard-segment span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border-radius: 10px;
+      color: #607080;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+    }
+    .ecard-segment input:checked + span {
+      background: #ffffff;
+      color: #2563eb;
+      box-shadow: 0 4px 14px rgba(30, 41, 59, 0.08);
+    }
+    .ecard-upload-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 66px;
+      gap: 10px;
+    }
+    .ecard-upload-row input {
+      min-width: 0;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 14px;
+      color: var(--ink);
+      background: #ffffff;
+      font: inherit;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    .ecard-upload-row button {
+      min-height: 44px;
+      border-radius: 14px;
+      background: #172033;
+      font-size: 15px;
+    }
+    .ecard-toggle-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line);
     }
-    .crop-head strong {
-      display: block;
-      color: var(--ink);
-      font-size: 16px;
+    .toggle {
+      position: relative;
+      width: 50px;
+      height: 30px;
+      flex: 0 0 auto;
     }
-    .crop-head span {
-      display: block;
-      margin-top: 3px;
-      color: var(--muted);
+    .toggle input {
+      position: absolute;
+      opacity: 0;
+    }
+    .toggle span {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: #d8e0e8;
+      transition: background .18s ease;
+    }
+    .toggle span::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: white;
+      transition: transform .18s ease;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, .16);
+    }
+    .toggle input:checked + span {
+      background: #2563eb;
+    }
+    .toggle input:checked + span::after {
+      transform: translateX(20px);
+    }
+    .ecard-note {
+      margin: 0;
+      color: #7b8aa0;
       font-size: 12px;
-      line-height: 1.35;
+      font-weight: 700;
+      line-height: 1.55;
     }
-    .crop-canvas-wrap {
-      min-height: 0;
-      padding: 12px;
-      background: #111827;
+    .detail-button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 14px;
+      border: 1px solid #d5e5ff;
+      background: #eff6ff;
+      color: #2563eb;
     }
-    .crop-canvas-wrap img {
-      display: block;
-      max-width: 100%;
-      max-height: calc(100vh - 210px);
+    .detail-editor {
+      display: none;
+      margin-top: 12px;
     }
-    .crop-tools {
+    .detail-editor.visible {
       display: grid;
       gap: 10px;
-      padding: 12px 16px 16px;
-      border-top: 1px solid var(--line);
-      background: #ffffff;
     }
-    .crop-quick {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-    .crop-quick button {
-      min-height: 38px;
-      border: 1px solid var(--line);
-      background: #ffffff;
-      color: var(--ink);
-      font-size: 13px;
-    }
-    .crop-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .crop-actions .save-crop-button {
+    .save-config-button {
+      margin-top: 14px;
       background: var(--accent);
+      box-shadow: 0 12px 26px rgba(6, 199, 85, 0.22);
     }
     .card-preview {
       display: none;
@@ -604,47 +678,71 @@ function renderAppHtml(env, url) {
         <div class="card-sdk" id="cardSdk">
           <h2>我的名片</h2>
           <p>拍照或上傳名片，AI 只抽欄位，圖片與資料都存到 Wasabi。</p>
-          <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
           <div class="button-row">
             <button class="secondary-button" id="recognizeCardButton" type="button">AI 辨識</button>
-            <button class="secondary-button" id="saveCardButton" type="button">儲存名片</button>
+            <button class="secondary-button" id="saveCardButton" type="button">儲存名片設定</button>
           </div>
-          <div class="form-grid" style="margin-top: 14px;">
-            <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
-            <div class="field"><label for="cardTitle">職稱</label><input id="cardTitle"></div>
-            <div class="field"><label for="cardCompany">公司</label><input id="cardCompany" autocomplete="organization"></div>
-            <div class="field"><label for="cardPhone">電話</label><input id="cardPhone" autocomplete="tel"></div>
-            <div class="field"><label for="cardEmail">Email</label><input id="cardEmail" autocomplete="email"></div>
-            <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
-            <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
-            <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
-            <div class="compact-grid">
-              <div class="field">
-                <label for="cardShareLabel">分享標籤</label>
-                <input id="cardShareLabel" placeholder="分享">
-              </div>
-              <div class="field">
-                <label for="cardShareColor">顏色</label>
-                <input id="cardShareColor" type="color" value="#ef4444">
+          <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
+          <input id="ecardCoverFile" type="file" accept="image/*" hidden>
+          <div class="ecard-panel">
+            <div class="ecard-block">
+              <div class="ecard-title">▦ 名片版型</div>
+              <div class="ecard-segment" id="ecardLayoutSegment">
+                <label><input type="radio" name="ecard-layout" value="standard" checked><span>標準(Mega)</span></label>
+                <label><input type="radio" name="ecard-layout" value="full"><span>滿版(Giga)</span></label>
+                <label><input type="radio" name="ecard-layout" value="square"><span>正方(1:1)</span></label>
               </div>
             </div>
-            <div class="field">
-              <label for="cardLayout">分享版型</label>
-              <select id="cardLayout">
-                <option value="standard">標準</option>
-                <option value="free">自由</option>
-                <option value="square">正方</option>
-              </select>
+            <div class="ecard-block">
+              <div class="ecard-title">▣ 封面圖片</div>
+              <div class="ecard-upload-row">
+                <input id="ecardImageUrl" placeholder="https://">
+                <button id="uploadEcardImageButton" type="button">上傳</button>
+              </div>
             </div>
-            <div class="field">
-              <label>底部按鈕設定</label>
-              <div class="button-editor" id="cardButtonEditor"></div>
-              <button class="secondary-button" id="addCardButton" type="button" style="margin-top: 10px;">+ 新增按鈕</button>
+            <div class="ecard-block">
+              <div class="ecard-toggle-row">
+                <div class="ecard-title">▻ 影片版名片</div>
+                <label class="toggle"><input id="ecardVideoEnabled" type="checkbox"><span></span></label>
+              </div>
+              <input id="ecardVideoUrl" class="file-picker" placeholder="影片網址，例如 https://...mp4">
+              <p class="ecard-note">開啟後分享名片會使用 LINE Flex video hero，封面圖片會作為縮圖。</p>
             </div>
           </div>
+          <button class="detail-button" id="toggleDetailEditor" type="button">
+            <span>☰ 編輯名片詳細文字資料</span><span>›</span>
+          </button>
+          <div class="detail-editor" id="detailEditor">
+            <div class="form-grid">
+              <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
+              <div class="field"><label for="cardTitle">職稱</label><input id="cardTitle"></div>
+              <div class="field"><label for="cardCompany">公司</label><input id="cardCompany" autocomplete="organization"></div>
+              <div class="field"><label for="cardPhone">電話</label><input id="cardPhone" autocomplete="tel"></div>
+              <div class="field"><label for="cardEmail">Email</label><input id="cardEmail" autocomplete="email"></div>
+              <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
+              <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
+              <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
+              <div class="compact-grid">
+                <div class="field">
+                  <label for="cardShareLabel">分享標籤</label>
+                  <input id="cardShareLabel" placeholder="分享">
+                </div>
+                <div class="field">
+                  <label for="cardShareColor">顏色</label>
+                  <input id="cardShareColor" type="color" value="#ef4444">
+                </div>
+              </div>
+              <div class="field">
+                <label>底部按鈕設定</label>
+                <div class="button-editor" id="cardButtonEditor"></div>
+                <button class="secondary-button" id="addCardButton" type="button" style="margin-top: 10px;">+ 新增按鈕</button>
+              </div>
+            </div>
+          </div>
+          <button class="save-config-button" id="saveEcardConfigButton" type="button">▣ 儲存名片設定</button>
           <div class="url-grid">
             <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
-            <label>自由<input id="publicCardUrlFree" type="text" readonly></label>
+            <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
             <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
             <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
           </div>
@@ -659,31 +757,6 @@ function renderAppHtml(env, url) {
       </aside>
     </div>
   </main>
-  <div class="crop-modal" id="cardCropper" aria-hidden="true">
-    <div class="crop-sheet">
-      <div class="crop-head">
-        <div>
-          <strong id="cropTitle">裁切版型圖片</strong>
-          <span id="cropHint">拖曳圖片、雙指縮放，確認後可直接儲存。</span>
-        </div>
-        <button class="icon-button" id="cancelCropButton" type="button">關</button>
-      </div>
-      <div class="crop-canvas-wrap">
-        <img id="cropImage" alt="">
-      </div>
-      <div class="crop-tools">
-        <div class="crop-quick">
-          <button id="cropZoomIn" type="button">放大</button>
-          <button id="cropZoomOut" type="button">縮小</button>
-          <button id="cropReset" type="button">重設</button>
-        </div>
-        <div class="crop-actions">
-          <button class="secondary-button" id="applyCropButton" type="button">確認裁切</button>
-          <button class="save-crop-button" id="saveCropButton" type="button">裁切並儲存</button>
-        </div>
-      </div>
-    </div>
-  </div>
   <script>
     const config = ${JSON.stringify({ storeCode, referralCode, liffId })};
     const statusEl = document.getElementById("status");
@@ -696,8 +769,6 @@ function renderAppHtml(env, url) {
     let currentCard = null;
     let activeCardLayout = "standard";
     let selectedCardImages = {};
-    let cropState = null;
-    let cropperInstance = null;
     let cardButtons = [];
 
     function setStatus(text) {
@@ -819,123 +890,23 @@ function renderAppHtml(env, url) {
     }
 
     function normalizeLayoutName(value) {
-      const aliases = { poster: "standard", classic: "free", links: "square" };
+      const aliases = { landscape: "standard", poster: "standard", portrait: "full", classic: "full", free: "full", links: "square" };
       const layout = String(value || "standard").toLowerCase();
-      return aliases[layout] || (["standard", "free", "square"].includes(layout) ? layout : "standard");
+      return aliases[layout] || (["standard", "full", "square"].includes(layout) ? layout : "standard");
     }
 
-    function cropSpecForLayout(layout) {
-      return normalizeLayoutName(layout) === "square"
-        ? { width: 800, height: 800, className: "square" }
-        : { width: 800, height: 533, className: "" };
+    function getSelectedLayout() {
+      const checked = document.querySelector('input[name="ecard-layout"]:checked');
+      return normalizeLayoutName(checked ? checked.value : activeCardLayout);
     }
 
-    function layoutLabel(layout) {
-      return ({ standard: "標準 800x533", free: "自由 800x533", square: "正方 800x800" })[normalizeLayoutName(layout)] || "標準 800x533";
+    function setSelectedLayout(layout) {
+      const normalized = normalizeLayoutName(layout);
+      const input = document.querySelector('input[name="ecard-layout"][value="' + normalized + '"]');
+      if (input) input.checked = true;
+      activeCardLayout = normalized;
+      return normalized;
     }
-
-    function destroyCropper() {
-      if (cropperInstance) {
-        cropperInstance.destroy();
-        cropperInstance = null;
-      }
-    }
-
-    function createSafeCropper(imgElement, ratio) {
-      destroyCropper();
-      if (!window.Cropper) {
-        throw new Error("Cropper.js 尚未載入");
-      }
-      return new Cropper(imgElement, {
-        aspectRatio: ratio,
-        viewMode: 1,
-        dragMode: "move",
-        autoCropArea: 0.92,
-        cropBoxMovable: true,
-        cropBoxResizable: true,
-        toggleDragModeOnDblclick: true,
-        zoomable: true,
-        zoomOnTouch: true,
-        zoomOnWheel: true,
-        wheelZoomRatio: 0.08,
-        movable: true,
-        scalable: true,
-        responsive: true,
-        restore: false,
-        guides: true,
-        center: true,
-        highlight: false,
-        background: false,
-      });
-    }
-
-    async function openCropper(file) {
-      const src = await readFileAsDataUrl(file);
-      const spec = cropSpecForLayout(activeCardLayout);
-      cropState = { src, layout: activeCardLayout };
-      const modal = document.getElementById("cardCropper");
-      const img = document.getElementById("cropImage");
-      document.getElementById("cropTitle").textContent = "裁切" + layoutLabel(activeCardLayout) + "圖片";
-      document.getElementById("cropHint").textContent = "拖曳圖片、雙指縮放。按「裁切並儲存」會直接存入目前版型。";
-      modal.classList.add("visible");
-      modal.setAttribute("aria-hidden", "false");
-      img.onload = () => {
-        try {
-          cropperInstance = createSafeCropper(img, spec.width / spec.height);
-        } catch (error) {
-          setStatus(error.message || "裁切器載入失敗");
-        }
-      };
-      img.src = src;
-      setStatus("請裁切" + layoutLabel(activeCardLayout) + "圖片。");
-    }
-
-    async function applyCrop(options = {}) {
-      if (!cropState) return false;
-      const spec = cropSpecForLayout(activeCardLayout);
-      let canvas = null;
-      if (cropperInstance) {
-        canvas = cropperInstance.getCroppedCanvas({
-          width: spec.width,
-          height: spec.height,
-          imageSmoothingEnabled: true,
-          imageSmoothingQuality: "high",
-          fillColor: "#ffffff",
-        });
-      }
-      if (!canvas) {
-        const img = document.getElementById("cropImage");
-        canvas = document.createElement("canvas");
-        canvas.width = spec.width;
-        canvas.height = spec.height;
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      }
-      selectedCardImages[activeCardLayout] = canvas.toDataURL("image/jpeg", 0.88);
-      destroyCropper();
-      document.getElementById("cardCropper").classList.remove("visible");
-      document.getElementById("cardCropper").setAttribute("aria-hidden", "true");
-      cropState = null;
-      renderCardPreview({ ...getEffectiveLayoutCard(currentCard, activeCardLayout), ...getCardFormData(), imageUrl: selectedCardImages[activeCardLayout] });
-      if (options.save) {
-        await saveBusinessCard();
-      } else {
-        setStatus("裁切完成，請按「儲存名片」。");
-      }
-      return true;
-    }
-
-    function cancelCrop() {
-      cropState = null;
-      destroyCropper();
-      document.getElementById("cardCropper").classList.remove("visible");
-      document.getElementById("cardCropper").setAttribute("aria-hidden", "true");
-      document.getElementById("cropImage").src = "";
-      document.getElementById("cardImageFile").value = "";
-    }
-
     function getCardFormData() {
       return {
         name: document.getElementById("cardName").value.trim(),
@@ -948,7 +919,10 @@ function renderAppHtml(env, url) {
         intro: document.getElementById("cardIntro").value.trim(),
         shareLabel: document.getElementById("cardShareLabel").value.trim(),
         shareColor: document.getElementById("cardShareColor").value,
-        layout: document.getElementById("cardLayout").value,
+        layout: getSelectedLayout(),
+        imageUrl: document.getElementById("ecardImageUrl").value.trim(),
+        videoEnabled: document.getElementById("ecardVideoEnabled").checked,
+        videoUrl: document.getElementById("ecardVideoUrl").value.trim(),
         buttons: getCardButtons(),
       };
     }
@@ -969,6 +943,8 @@ function renderAppHtml(env, url) {
         buttons: Array.isArray(card.buttons) ? card.buttons : [],
         imageUrl: card.imageUrl || "",
         imageKey: card.imageKey || "",
+        videoEnabled: Boolean(card.videoEnabled),
+        videoUrl: card.videoUrl || "",
       };
     }
 
@@ -980,8 +956,9 @@ function renderAppHtml(env, url) {
     }
 
     function saveCurrentLayoutDraft() {
-      if (!currentCard) return;
+      if (!currentCard) currentCard = {};
       const layout = normalizeLayoutName(activeCardLayout);
+      activeCardLayout = layout;
       currentCard.layouts = { ...(currentCard.layouts || {}) };
       currentCard.layouts[layout] = {
         ...(currentCard.layouts[layout] || {}),
@@ -993,7 +970,7 @@ function renderAppHtml(env, url) {
 
     function fillCardForm(card, layout) {
       card = card || {};
-      activeCardLayout = normalizeLayoutName(layout || card.layout || activeCardLayout || "standard");
+      activeCardLayout = setSelectedLayout(layout || card.layout || activeCardLayout || "standard");
       const view = getEffectiveLayoutCard(card, activeCardLayout);
       document.getElementById("cardName").value = view.name || "";
       document.getElementById("cardTitle").value = view.title || "";
@@ -1005,12 +982,14 @@ function renderAppHtml(env, url) {
       document.getElementById("cardIntro").value = view.intro || "";
       document.getElementById("cardShareLabel").value = view.shareLabel || "分享";
       document.getElementById("cardShareColor").value = view.shareColor || "#ef4444";
-      document.getElementById("cardLayout").value = activeCardLayout;
+      document.getElementById("ecardImageUrl").value = selectedCardImages[activeCardLayout] || view.imageUrl || "";
+      document.getElementById("ecardVideoEnabled").checked = Boolean(view.videoEnabled);
+      document.getElementById("ecardVideoUrl").value = view.videoUrl || "";
       cardButtons = Array.isArray(view.buttons) && view.buttons.length ? view.buttons.slice(0, 6) : defaultCardButtons(view);
       renderCardButtonEditor();
       const urls = card.publicUrls || {};
       document.getElementById("publicCardUrlStandard").value = urls.standard || urls.poster || card.publicUrl || "";
-      document.getElementById("publicCardUrlFree").value = urls.free || urls.classic || card.publicUrl || "";
+      document.getElementById("publicCardUrlFull").value = urls.full || urls.free || urls.classic || card.publicUrl || "";
       document.getElementById("publicCardUrlSquare").value = urls.square || urls.links || card.publicUrl || "";
       renderCardPreview(view);
     }
@@ -1106,9 +1085,9 @@ function renderAppHtml(env, url) {
     }
 
     function selectedPublicCardUrl(card) {
-      const layout = document.getElementById("cardLayout").value || "standard";
+      const layout = getSelectedLayout();
       const urls = (card && card.publicUrls) || {};
-      const aliases = { standard: "poster", free: "classic", square: "links" };
+      const aliases = { standard: "poster", full: "free", square: "links" };
       return urls[layout] || urls[aliases[layout]] || card?.publicUrl || "";
     }
 
@@ -1128,14 +1107,12 @@ function renderAppHtml(env, url) {
 
     async function recognizeSelectedCard() {
       const file = document.getElementById("cardImageFile").files[0];
-      const imageDataUrl = selectedCardImages[activeCardLayout];
-      if (!imageDataUrl && !file) {
-        setStatus("請先拍照或上傳名片圖片");
-        return;
-      }
+      let imageDataUrl = selectedCardImages[activeCardLayout];
       if (!imageDataUrl && file) {
-        await openCropper(file);
-        setStatus("請先套用裁切，再按 AI 辨識。");
+        imageDataUrl = await compressCardImage(file, 1600);
+      }
+      if (!imageDataUrl) {
+        setStatus("請先拍照或上傳名片圖片。");
         return;
       }
       setStatus("AI 正在辨識名片...");
@@ -1154,28 +1131,25 @@ function renderAppHtml(env, url) {
         setStatus(result.message || result.error || "名片辨識失敗");
         return;
       }
+      selectedCardImages[activeCardLayout] = imageDataUrl;
       currentCard = currentCard || {};
       currentCard.layouts = { ...(currentCard.layouts || {}) };
       currentCard.layouts[activeCardLayout] = {
         ...getEffectiveLayoutCard(currentCard, activeCardLayout),
         ...(result.card || {}),
-        imageUrl: selectedCardImages[activeCardLayout] || getEffectiveLayoutCard(currentCard, activeCardLayout).imageUrl,
+        imageUrl: imageDataUrl,
       };
+      document.getElementById("ecardImageUrl").value = imageDataUrl;
       fillCardForm(currentCard, activeCardLayout);
-      setStatus("辨識完成，可以編輯後儲存");
+      setStatus("辨識完成，請確認資料後儲存。");
     }
 
-    async function saveBusinessCard() {
+    async function saveBusinessCard(options = {}) {
       if (!currentSessionToken) return;
-      const pendingFile = document.getElementById("cardImageFile").files[0];
-      if (pendingFile && !selectedCardImages[activeCardLayout]) {
-        setStatus("請先套用裁切，再儲存名片。");
-        return;
-      }
       saveCurrentLayoutDraft();
       const layout = activeCardLayout;
       const card = { ...(currentCard || {}), ...getCardFormData(), layout };
-      setStatus("正在儲存名片...");
+      if (!options.quiet) setStatus("正在儲存名片設定...");
       const response = await fetch("/api/cards/upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1191,15 +1165,27 @@ function renderAppHtml(env, url) {
       const result = await response.json();
       if (!result.ok) {
         setStatus(result.message || result.error || "名片儲存失敗");
-        return;
+        return false;
       }
       currentCard = result.card;
       selectedCardImages = {};
       document.getElementById("cardImageFile").value = "";
+      document.getElementById("ecardCoverFile").value = "";
       fillCardForm(currentCard, layout);
-      setStatus("名片已儲存");
+      if (!options.quiet) setStatus("名片設定已儲存。");
+      return true;
     }
 
+    async function uploadEcardImage() {
+      const file = document.getElementById("ecardCoverFile").files[0];
+      if (!file) return;
+      selectedCardImages[activeCardLayout] = await compressCardImage(file, 1600);
+      document.getElementById("ecardImageUrl").value = selectedCardImages[activeCardLayout];
+      renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: selectedCardImages[activeCardLayout] });
+      setStatus("正在上傳封面圖片...");
+      const saved = await saveBusinessCard({ quiet: true });
+      if (saved) setStatus("封面圖片已上傳並儲存。");
+    }
     function flexText(value, fallback, limit = 120) {
       const text = String(value || fallback || " ").replace(/\\s+/g, " ").trim();
       return (text || " ").slice(0, limit);
@@ -1218,7 +1204,7 @@ function renderAppHtml(env, url) {
       ].slice(0, 4);
       const bubble = {
         type: "bubble",
-        size: "mega",
+        size: card.layout === "full" ? "giga" : "mega",
         header: {
           type: "box",
           layout: "horizontal",
@@ -1265,12 +1251,27 @@ function renderAppHtml(env, url) {
           })),
         },
       };
-      if (card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
+      if (card.videoEnabled && card.videoUrl && /^https:\\/\\//i.test(card.videoUrl) && card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
+        bubble.hero = {
+          type: "video",
+          url: card.videoUrl,
+          previewUrl: card.imageUrl,
+          altContent: {
+            type: "image",
+            url: card.imageUrl,
+            size: "full",
+            aspectRatio: card.layout === "square" ? "1:1" : (card.layout === "full" ? "2:3" : "800:533"),
+            aspectMode: "cover",
+          },
+          aspectRatio: card.layout === "square" ? "1:1" : (card.layout === "full" ? "2:3" : "800:533"),
+          action: { type: "uri", uri: url },
+        };
+      } else if (card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
         bubble.hero = {
           type: "image",
           url: card.imageUrl,
           size: "full",
-          aspectRatio: "800:533",
+          aspectRatio: card.layout === "square" ? "1:1" : (card.layout === "full" ? "2:3" : "800:533"),
           aspectMode: "cover",
           action: { type: "uri", uri: url },
         };
@@ -1284,6 +1285,7 @@ function renderAppHtml(env, url) {
 
     async function shareBusinessCard() {
       saveCurrentLayoutDraft();
+      await saveBusinessCard({ quiet: true });
       const liveCard = { ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), publicUrls: currentCard?.publicUrls || {} };
       if (selectedCardImages[activeCardLayout]) liveCard.imageUrl = selectedCardImages[activeCardLayout];
       const url = selectedPublicCardUrl(liveCard);
@@ -1350,29 +1352,34 @@ function renderAppHtml(env, url) {
     });
 
     document.getElementById("recognizeCardButton").addEventListener("click", recognizeSelectedCard);
-    document.getElementById("saveCardButton").addEventListener("click", saveBusinessCard);
+    document.getElementById("saveCardButton").addEventListener("click", () => saveBusinessCard());
+    document.getElementById("saveEcardConfigButton").addEventListener("click", () => saveBusinessCard());
     document.getElementById("shareCardButton").addEventListener("click", shareBusinessCard);
-    document.getElementById("cardImageFile").addEventListener("change", async (event) => {
-      const file = event.target.files && event.target.files[0];
-      if (file) await openCropper(file);
+    document.getElementById("uploadEcardImageButton").addEventListener("click", () => document.getElementById("ecardCoverFile").click());
+    document.getElementById("ecardCoverFile").addEventListener("change", uploadEcardImage);
+    document.getElementById("cardImageFile").addEventListener("change", () => {
+      setStatus("圖片已選擇，可按 AI 辨識抽取名片資料。");
     });
-    document.getElementById("applyCropButton").addEventListener("click", applyCrop);
-    document.getElementById("saveCropButton").addEventListener("click", () => applyCrop({ save: true }));
-    document.getElementById("cancelCropButton").addEventListener("click", cancelCrop);
-    document.getElementById("cropZoomIn").addEventListener("click", () => cropperInstance && cropperInstance.zoom(0.1));
-    document.getElementById("cropZoomOut").addEventListener("click", () => cropperInstance && cropperInstance.zoom(-0.1));
-    document.getElementById("cropReset").addEventListener("click", () => cropperInstance && cropperInstance.reset());
-    document.getElementById("cardLayout").addEventListener("change", (event) => {
-      saveCurrentLayoutDraft();
-      activeCardLayout = normalizeLayoutName(event.target.value);
-      cancelCrop();
-      fillCardForm(currentCard || {}, activeCardLayout);
+    document.getElementById("toggleDetailEditor").addEventListener("click", () => {
+      document.getElementById("detailEditor").classList.toggle("visible");
     });
+    document.querySelectorAll('input[name="ecard-layout"]').forEach((input) => {
+      input.addEventListener("change", (event) => {
+        saveCurrentLayoutDraft();
+        activeCardLayout = normalizeLayoutName(event.target.value);
+        fillCardForm(currentCard || {}, activeCardLayout);
+      });
+    });
+    ["ecardImageUrl", "ecardVideoUrl"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", () => {
+        renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData() });
+      });
+    });
+    document.getElementById("ecardVideoEnabled").addEventListener("change", () => saveCurrentLayoutDraft());
     document.getElementById("addCardButton").addEventListener("click", () => {
       cardButtons.push({ label: "新增按鈕", url: "https://", color: "#06c755" });
       renderCardButtonEditor();
     });
-
     boot();
   </script>
 </body>
@@ -1586,6 +1593,8 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
     buttons: normalizeCardButtons(standard.buttons || input.buttons, standard),
     imageUrl: standard.imageUrl || "",
     imageKey: standard.imageKey || "",
+    videoEnabled: Boolean(standard.videoEnabled || input.videoEnabled),
+    videoUrl: standard.videoUrl || input.videoUrl || "",
     layouts,
     status: "published",
     updatedAt: now,
@@ -1609,7 +1618,9 @@ async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
   if (!card) return null;
   const publicUrls = { ...createCardUrls(origin, card.publicSlug), ...(card.publicUrls || {}) };
   publicUrls.standard = publicUrls.standard || publicUrls.poster;
-  publicUrls.free = publicUrls.free || publicUrls.classic;
+  publicUrls.full = publicUrls.full || publicUrls.free || publicUrls.classic;
+  publicUrls.free = publicUrls.full;
+  publicUrls.classic = publicUrls.full;
   publicUrls.square = publicUrls.square || publicUrls.links;
   const layouts = normalizeCardLayouts(card.layouts, card, origin);
   return {
@@ -1650,7 +1661,10 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
   const shareColor = safeCssColor(card.shareColor, "#ef4444");
   const buttons = normalizeCardButtons(card.buttons, card);
   const actionHtml = buttons.map((button) => `<a href="${escapeHtml(normalizeActionUrl(button.url))}" style="background:${escapeHtml(safeCssColor(button.color, "#06c755"))}">${escapeHtml(button.label)}</a>`).join("");
-  const image = card.imageUrl ? `<img src="${escapeHtml(card.imageUrl)}" alt="">` : `<div class="visual-empty">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</div>`;
+  const hasVideo = Boolean(card.videoEnabled && /^https:\/\//i.test(card.videoUrl || ""));
+  const image = hasVideo
+    ? `<video src="${escapeHtml(card.videoUrl)}" ${card.imageUrl ? `poster="${escapeHtml(card.imageUrl)}"` : ""} controls playsinline muted></video>`
+    : card.imageUrl ? `<img src="${escapeHtml(card.imageUrl)}" alt="">` : `<div class="visual-empty">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</div>`;
   const bodyClass = `layout-${layout}`;
   const currentUrl = card.publicUrls?.[layout] || card.publicUrl || "";
   const sharePayload = {
@@ -1661,6 +1675,8 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       meta,
       intro: card.intro || "",
       imageUrl: card.imageUrl || "",
+      videoEnabled: Boolean(card.videoEnabled),
+      videoUrl: card.videoUrl || "",
       shareLabel,
       shareColor,
       buttons,
@@ -1684,7 +1700,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .share-head { min-height:52px; display:flex; justify-content:flex-end; align-items:center; padding:10px 12px; }
     .share-badge { appearance:none; border:0; display:inline-flex; flex:0 0 auto; width:auto; max-width:max-content; align-items:center; justify-content:center; min-height:32px; border-radius:999px; padding:6px 16px; color:white; font:inherit; font-weight:900; line-height:1.2; white-space:nowrap; text-decoration:none; background:${escapeHtml(shareColor)}; cursor:pointer; }
     .hero { background:#f8fbff; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-    .hero img { width:100%; height:100%; object-fit:cover; display:block; }
+    .hero img, .hero video { width:100%; height:100%; object-fit:cover; display:block; }
     .visual-empty { width:120px; height:120px; border-radius:8px; background:#06c755; color:white; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:900; }
     h1 { margin:0; letter-spacing:0; line-height:1.08; }
     .meta { color:#364756; line-height:1.45; }
@@ -1695,43 +1711,43 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .actions a { display:block; text-decoration:none; text-align:center; padding:13px 16px; border-radius:8px; font-weight:900; color:white; }
     .layout-standard main { width:min(430px, calc(100% - 24px)); }
     .layout-standard .hero { aspect-ratio:800/533; }
-    .layout-standard .hero img { object-fit:contain; background:#fff; }
+    .layout-standard .hero img, .layout-standard .hero video { object-fit:contain; background:#fff; }
     .layout-standard .body { padding:24px 26px 12px; text-align:center; }
     .layout-standard h1 { font-size:30px; margin-bottom:12px; }
     .layout-standard .intro { margin:14px 0 0; text-align:left; }
     .layout-standard .actions { padding:22px 26px 26px; }
-    .layout-free main { width:min(860px, calc(100% - 28px)); }
-    .layout-free .physical { display:grid; grid-template-columns:minmax(0,1fr) 38%; min-height:340px; }
-    .layout-free .share-head { position:absolute; top:0; right:0; z-index:2; }
-    .layout-free .info { padding:64px 34px 30px; display:flex; flex-direction:column; justify-content:space-between; border-left:8px solid #06c755; }
-    .layout-free .brand { color:#607080; font-weight:800; }
-    .layout-free h1 { font-size:40px; margin:8px 0; }
-    .layout-free .meta { font-size:18px; }
-    .layout-free .intro { margin-top:18px; color:#607080; }
-    .layout-free .hero { min-height:340px; padding:18px; }
-    .layout-free .hero img { object-fit:contain; border-radius:6px; box-shadow:0 10px 28px rgba(25,42,61,.10); }
-    .layout-free .actions { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:16px; }
+    .layout-full main { width:min(860px, calc(100% - 28px)); }
+    .layout-full .physical { display:grid; grid-template-columns:minmax(0,1fr) 38%; min-height:340px; }
+    .layout-full .share-head { position:absolute; top:0; right:0; z-index:2; }
+    .layout-full .info { padding:64px 34px 30px; display:flex; flex-direction:column; justify-content:space-between; border-left:8px solid #06c755; }
+    .layout-full .brand { color:#607080; font-weight:800; }
+    .layout-full h1 { font-size:40px; margin:8px 0; }
+    .layout-full .meta { font-size:18px; }
+    .layout-full .intro { margin-top:18px; color:#607080; }
+    .layout-full .hero { min-height:340px; padding:18px; }
+    .layout-full .hero img, .layout-full .hero video { object-fit:contain; border-radius:6px; box-shadow:0 10px 28px rgba(25,42,61,.10); }
+    .layout-full .actions { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:16px; }
     .layout-square main { width:min(520px, calc(100% - 24px)); }
     .layout-square .card-shell { padding-bottom:22px; }
     .layout-square .square-frame { width:100%; aspect-ratio:1/1; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
     .layout-square .hero { min-height:0; }
-    .layout-square .hero img { object-fit:cover; }
+    .layout-square .hero img, .layout-square .hero video { object-fit:cover; }
     .layout-square .profile { padding:18px 26px; text-align:center; }
     .layout-square h1 { font-size:28px; margin-bottom:8px; }
     .layout-square .intro { margin-top:10px; color:#607080; }
     .layout-square .actions { padding:0 26px; }
     @media (max-width: 680px) {
-      .layout-free .physical { grid-template-columns:1fr; }
-      .layout-free .hero { order:-1; min-height:220px; }
-      .layout-free .info { padding:64px 24px 24px; }
+      .layout-full .physical { grid-template-columns:1fr; }
+      .layout-full .hero { order:-1; min-height:220px; }
+      .layout-full .info { padding:64px 24px 24px; }
       h1 { font-size:32px; }
-      .layout-free .actions { grid-template-columns:1fr; }
+      .layout-full .actions { grid-template-columns:1fr; }
     }
   </style>
 </head>
 <body class="${escapeHtml(bodyClass)}">
   <main>
-    ${layout === "free" ? `
+    ${layout === "full" ? `
       <section class="card-shell physical">
         <div class="share-head"><button class="share-badge" id="publicShareButton" type="button">${escapeHtml(shareLabel)}</button></div>
         <div class="info">
@@ -1799,7 +1815,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       ].filter((button) => button && button.label && button.url).slice(0, 4);
       const bubble = {
         type: "bubble",
-        size: "mega",
+        size: "${layout === "full" ? "giga" : "mega"}",
         header: {
           type: "box",
           layout: "horizontal",
@@ -1846,12 +1862,27 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
           })),
         },
       };
-      if (card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
+      if (card.videoEnabled && card.videoUrl && /^https:\\/\\//i.test(card.videoUrl) && card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
+        bubble.hero = {
+          type: "video",
+          url: card.videoUrl,
+          previewUrl: card.imageUrl,
+          altContent: {
+            type: "image",
+            url: card.imageUrl,
+            size: "full",
+            aspectRatio: "${layout === "square" ? "1:1" : (layout === "full" ? "2:3" : "800:533")}",
+            aspectMode: "cover",
+          },
+          aspectRatio: "${layout === "square" ? "1:1" : (layout === "full" ? "2:3" : "800:533")}",
+          action: { type: "uri", uri: shareConfig.url },
+        };
+      } else if (card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
         bubble.hero = {
           type: "image",
           url: card.imageUrl,
           size: "full",
-          aspectRatio: "800:533",
+          aspectRatio: "${layout === "square" ? "1:1" : (layout === "full" ? "2:3" : "800:533")}",
           aspectMode: "cover",
           action: { type: "uri", uri: shareConfig.url },
         };
@@ -1965,8 +1996,10 @@ function normalizeBusinessCard(source, origin) {
     shareColor: safeCssColor(source.shareColor, "#ef4444"),
     layout: normalizeCardLayout(source.layout),
     buttons: normalizeCardButtons(source.buttons, source),
-    imageUrl: source.imageUrl && String(source.imageUrl).startsWith(origin) ? String(source.imageUrl) : "",
+    imageUrl: normalizeUrl(cleanText(source.imageUrl, 500)),
     imageKey: cleanText(source.imageKey, 500),
+    videoEnabled: Boolean(source.videoEnabled),
+    videoUrl: normalizeUrl(cleanText(source.videoUrl, 500)),
     layouts: normalizeCardLayouts(source.layouts, source, origin),
   };
 }
@@ -1987,6 +2020,8 @@ function layoutBaseFromCard(source) {
     buttons: normalizeCardButtons(source.buttons, source),
     imageUrl: cleanText(source.imageUrl, 500),
     imageKey: cleanText(source.imageKey, 500),
+    videoEnabled: Boolean(source.videoEnabled),
+    videoUrl: normalizeUrl(cleanText(source.videoUrl, 500)),
   };
 }
 
@@ -1994,7 +2029,8 @@ function normalizeCardLayouts(layouts, fallback = {}, origin = "") {
   const normalized = {};
   const source = layouts && typeof layouts === "object" ? layouts : {};
   for (const layout of CARD_LAYOUTS) {
-    const record = source[layout] || source[Object.entries(CARD_LAYOUT_ALIASES).find(([, target]) => target === layout)?.[0]] || null;
+    const aliasKey = Object.entries(CARD_LAYOUT_ALIASES).find(([key, target]) => target === layout && source[key])?.[0];
+    const record = source[layout] || (aliasKey ? source[aliasKey] : null);
     if (record) normalized[layout] = normalizeCardLayoutRecord(record, origin, layout);
   }
   if (!Object.keys(normalized).length && fallback && typeof fallback === "object") {
@@ -2006,12 +2042,14 @@ function normalizeCardLayouts(layouts, fallback = {}, origin = "") {
 
 function normalizeCardLayoutRecord(source, origin = "", layout = DEFAULT_CARD_LAYOUT) {
   const base = layoutBaseFromCard(source);
-  const imageUrl = cleanText(source?.imageUrl, 500);
+  const imageUrl = normalizeUrl(cleanText(source?.imageUrl, 500));
   return {
     ...base,
     layout: normalizeCardLayout(layout || source?.layout),
-    imageUrl: imageUrl && (!origin || imageUrl.startsWith(origin) || imageUrl.startsWith("data:image/")) ? imageUrl : "",
+    imageUrl: imageUrl && (/^https:\/\//i.test(imageUrl) || imageUrl.startsWith("data:image/")) ? imageUrl : "",
     imageKey: cleanText(source?.imageKey, 500),
+    videoEnabled: Boolean(source?.videoEnabled),
+    videoUrl: normalizeUrl(cleanText(source?.videoUrl, 500)),
   };
 }
 
@@ -2048,10 +2086,11 @@ function createCardUrls(origin, slug) {
   const encoded = encodeURIComponent(slug);
   return {
     standard: `${origin}/card/${encoded}/standard`,
-    free: `${origin}/card/${encoded}/free`,
+    full: `${origin}/card/${encoded}/full`,
     square: `${origin}/card/${encoded}/square`,
     poster: `${origin}/card/${encoded}/standard`,
-    classic: `${origin}/card/${encoded}/free`,
+    free: `${origin}/card/${encoded}/full`,
+    classic: `${origin}/card/${encoded}/full`,
     links: `${origin}/card/${encoded}/square`,
   };
 }
