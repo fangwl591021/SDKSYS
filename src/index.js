@@ -210,61 +210,192 @@ function renderAppHtml(env, url) {
       min-height: 100vh;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
-      background: linear-gradient(135deg, #f8fbff 0%, #eef6f0 52%, #f7f1e8 100%);
+      background: #ffe8f1;
     }
     main {
-      width: min(960px, calc(100% - 32px));
+      width: min(540px, 100%);
       margin: 0 auto;
-      padding: 32px 0;
+      min-height: 100vh;
+      padding: 0 0 86px;
+      background: #ffe8f1;
     }
-    .shell {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
-      gap: 20px;
-      align-items: stretch;
-    }
-    .panel, .card {
-      background: rgba(255, 255, 255, 0.92);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: 0 18px 50px rgba(25, 42, 61, 0.10);
-    }
-    .panel { padding: 28px; }
-    .card { padding: 22px; }
-    h1 {
-      margin: 0 0 10px;
-      font-size: clamp(28px, 5vw, 44px);
-      line-height: 1.08;
-      letter-spacing: 0;
-    }
-    h2 {
-      margin: 0 0 16px;
-      font-size: 20px;
-      letter-spacing: 0;
-    }
-    p {
-      margin: 0 0 16px;
-      color: var(--muted);
-      line-height: 1.65;
-    }
-    .meta {
-      display: grid;
-      gap: 8px;
-      margin: 22px 0;
-    }
-    .row {
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
       display: flex;
+      align-items: center;
       justify-content: space-between;
+      min-height: 74px;
+      padding: 16px 26px;
+      border-bottom: 1px solid #f1d7e2;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+    }
+    .app-header strong {
+      font-size: 24px;
+      font-weight: 900;
+    }
+    .round-icon {
+      width: 42px;
+      min-height: 42px;
+      border: 2px solid #111827;
+      border-radius: 999px;
+      background: #fff;
+      color: #111827;
+      font-size: 22px;
+      font-weight: 900;
+    }
+    .app-view { display: none; padding: 24px 26px; }
+    .app-view.active { display: block; }
+    .home-profile {
+      display: grid;
+      grid-template-columns: 56px minmax(0, 1fr) 98px;
+      gap: 14px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .avatar {
+      width: 54px;
+      height: 54px;
+      border: 3px solid white;
+      border-radius: 999px;
+      object-fit: cover;
+      background: #eef2f7;
+      box-shadow: 0 5px 14px rgba(15, 23, 42, .12);
+    }
+    .profile-name {
+      margin: 0 0 5px;
+      color: #111827;
+      font-size: 21px;
+      font-weight: 900;
+    }
+    .role-pill {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      color: #e12b7b;
+      background: #fff1f7;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .points {
+      color: #e83f9a;
+      font-size: 26px;
+      line-height: 1;
+      font-weight: 500;
+    }
+    .qr-card {
+      display: grid;
+      gap: 7px;
+      justify-items: center;
+      padding: 10px 8px;
+      border-radius: 14px;
+      background: white;
+    }
+    .qr-box {
+      width: 64px;
+      height: 64px;
+      border: 1px solid #d8e0e8;
+      background:
+        linear-gradient(90deg, #111 6px, transparent 6px) 0 0/12px 12px,
+        linear-gradient(#111 6px, transparent 6px) 0 0/12px 12px,
+        #fff;
+    }
+    .share-mini {
+      min-height: 34px;
+      border-radius: 8px;
+      background: #e83f9a;
+      font-size: 13px;
+    }
+    .quick-actions {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
       gap: 16px;
-      padding: 10px 0;
-      border-bottom: 1px solid var(--line);
-      color: var(--muted);
+      margin: 58px 0 28px;
+      text-align: center;
     }
-    .row strong {
-      color: var(--ink);
-      text-align: right;
-      word-break: break-word;
+    .quick-action button {
+      width: 56px;
+      min-height: 56px;
+      border-radius: 999px;
+      background: var(--accent);
+      font-size: 25px;
     }
+    .quick-action span {
+      display: block;
+      margin-top: 8px;
+      color: #172033;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .section-title {
+      margin: 28px 0 16px;
+      color: #172033;
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+    .advice-card, .setting-item {
+      padding: 22px;
+      border: 1px solid #ffe6ad;
+      border-radius: 26px;
+      background: white;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
+    }
+    .setting-list {
+      display: grid;
+      gap: 20px;
+      margin-top: 18px;
+    }
+    .setting-item {
+      width: 100%;
+      min-height: 82px;
+      border-color: #f3dfe7;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #0f172a;
+      font-size: 20px;
+      font-weight: 900;
+      text-align: left;
+      cursor: pointer;
+    }
+    .invite-button {
+      min-height: 70px;
+      border-radius: 18px;
+      background: #2f6ff2;
+      box-shadow: 0 10px 18px rgba(47, 111, 242, .2);
+      font-size: 19px;
+      font-weight: 900;
+    }
+    .bottom-nav {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      width: min(540px, 100%);
+      transform: translateX(-50%);
+      padding: 10px 24px 8px;
+      border-radius: 24px 24px 0 0;
+      border: 1px solid #eef2f7;
+      background: rgba(255, 255, 255, .96);
+      box-shadow: 0 -8px 24px rgba(15, 23, 42, .08);
+    }
+    .nav-button {
+      min-height: 52px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .nav-button.active { color: #0f172a; background: #f1f5f9; }
     button {
       width: 100%;
       min-height: 46px;
@@ -276,11 +407,8 @@ function renderAppHtml(env, url) {
       font-weight: 700;
       cursor: pointer;
     }
-    button:hover { background: var(--accent-dark); }
-    button:disabled {
-      cursor: not-allowed;
-      background: #9aa8b4;
-    }
+    button:hover { filter: brightness(.97); }
+    button:disabled { cursor: not-allowed; background: #9aa8b4; }
     .status {
       min-height: 44px;
       margin-top: 16px;
@@ -289,6 +417,20 @@ function renderAppHtml(env, url) {
       background: var(--soft);
       color: var(--muted);
       line-height: 1.5;
+      word-break: break-word;
+    }
+    .sr-only, #loginButton { display: none; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .row strong {
+      color: var(--ink);
+      text-align: right;
       word-break: break-word;
     }
     .member {
@@ -339,10 +481,18 @@ function renderAppHtml(env, url) {
     .card-sdk {
       display: none;
       margin-top: 18px;
-      padding-top: 18px;
-      border-top: 1px solid var(--line);
     }
     .card-sdk.visible { display: block; }
+    .card-sdk h2 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .card-sdk p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
     .form-grid {
       display: grid;
       gap: 10px;
@@ -628,41 +778,83 @@ function renderAppHtml(env, url) {
       color: var(--ink);
     }
     @media (max-width: 760px) {
-      main { width: min(100% - 24px, 960px); padding: 20px 0; }
-      .shell { grid-template-columns: 1fr; }
-      .panel, .card { padding: 20px; }
+      .app-view { padding: 22px 20px; }
+      .app-header { padding: 14px 20px; }
+      .quick-actions { gap: 10px; }
+      .quick-action button { width: 50px; min-height: 50px; }
     }
   </style>
 </head>
 <body>
   <main>
-    <div class="shell">
-      <section class="panel">
-        <h1>SDK 名片王</h1>
-        <p>使用 LINE Login 建立租戶會員身份，會員編號會依商店隔離產生，不暴露平台 UID。</p>
-        <div class="meta">
-          <div class="row"><span>商店代碼</span><strong id="storeCode">${escapeHtml(storeCode)}</strong></div>
-          <div class="row"><span>推薦碼</span><strong id="referralCode">${escapeHtml(referralCode || "未帶入")}</strong></div>
-          <div class="row"><span>LIFF</span><strong>${liffId ? "已設定" : "尚未設定"}</strong></div>
+    <header class="app-header">
+      <strong>LINE商機引擎</strong>
+      <button class="round-icon" id="refreshLoginButton" type="button" aria-label="重新登入">↔</button>
+    </header>
+
+    <button id="loginButton" type="button">LINE Login</button>
+
+    <section class="app-view active" id="homeView">
+      <div class="status" id="status">準備中</div>
+      <div class="home-profile">
+        <img class="avatar" id="profileAvatar" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+        <div>
+          <div class="profile-name"><span id="homeName">會員</span><span class="role-pill" id="homeRole">總管</span></div>
+          <div style="color:#607080;font-weight:800;">可用點數</div>
+          <div><span class="points" id="homePoints">11,425</span> <span style="font-weight:800;">點</span></div>
         </div>
-      </section>
-      <aside class="card">
-        <h2>會員登入</h2>
-        <p>登入後會建立租戶會員、會員編號、推薦碼，並寫入 Wasabi。</p>
-        <button id="loginButton" type="button">LINE Login</button>
-        <div class="status" id="status">準備中</div>
-        <div class="member" id="member">
-          <div class="row"><span>會員編號</span><strong id="memberNo"></strong></div>
-          <div class="row"><span>我的推薦碼</span><strong id="myReferralCode"></strong></div>
-          <div class="row"><span>歸屬狀態</span><strong id="attribution"></strong></div>
-          <div class="copy-row">
-            <input id="referralLink" type="text" readonly aria-label="Referral link">
-            <button class="secondary-button" id="copyReferralLink" type="button">Copy referral link</button>
-          </div>
-          <div class="row"><span>直接下線</span><strong id="downlineCount">0</strong></div>
-          <div class="downlines" id="downlines"></div>
+        <div class="qr-card">
+          <div style="font-size:12px;font-weight:800;color:#64748b;">專屬 QR</div>
+          <div class="qr-box" aria-hidden="true"></div>
+          <button class="share-mini" id="homeShareReferral" type="button">分享↗</button>
         </div>
-        <div class="card-sdk" id="cardSdk">
+      </div>
+      <div class="quick-actions">
+        <div class="quick-action"><button id="homeOpenCardButton" type="button">▣</button><span>名片酷</span></div>
+        <div class="quick-action"><button type="button">↪</button><span>發名片</span></div>
+        <div class="quick-action"><button type="button">◖</button><span>站內公告</span></div>
+        <div class="quick-action"><button type="button">▤</button><span>跟進</span></div>
+        <div class="quick-action"><button type="button">✉</button><span>收件匣</span></div>
+      </div>
+      <h2 class="section-title">💡 AI 上手建議</h2>
+      <div class="advice-card">
+        <div style="font-size:19px;font-weight:900;margin-bottom:8px;">今天先跟進 3 位名片客戶</div>
+        <div style="color:#47617d;line-height:1.7;">從剛掃進來、尚未聯繫的人開始，先傳合作說明或安排一次簡短訪談。</div>
+      </div>
+      <h2 class="section-title">🎧 今日業務助理</h2>
+      <div class="advice-card">
+        <div style="font-size:18px;font-weight:900;margin-bottom:8px;">等待登入資料同步</div>
+        <div style="color:#7890aa;line-height:1.7;">登入完成後會顯示會員、推薦與名片狀態。</div>
+      </div>
+    </section>
+
+    <section class="app-view" id="settingsView">
+      <h1 class="section-title">設定與參數</h1>
+      <div id="settingsList">
+        <button class="invite-button" id="copyReferralLink" type="button">⌯ 產生我的專屬邀約連結</button>
+        <div class="setting-list">
+          <button class="setting-item" id="openCardSettingsButton" type="button"><span>♟ 我的專屬名片設定</span><span>⌄</span></button>
+          <button class="setting-item" type="button"><span>● 會員註冊 / 資料維護</span><span>⌄</span></button>
+          <button class="setting-item" type="button"><span>● 本機 GPT API Key</span><span>⌄</span></button>
+          <button class="setting-item" type="button"><span>● 個人 AI 助理核心</span><span>⌄</span></button>
+          <button class="setting-item" type="button"><span>⌯ 個人社群連結</span><span>⌄</span></button>
+          <button class="setting-item" type="button"><span>▻ Telegram 接收設定</span><span>⌄</span></button>
+        </div>
+      </div>
+
+      <div class="member" id="member">
+        <div class="row"><span>會員編號</span><strong id="memberNo"></strong></div>
+        <div class="row"><span>我的推薦碼</span><strong id="myReferralCode"></strong></div>
+        <div class="row"><span>歸屬狀態</span><strong id="attribution"></strong></div>
+        <div class="copy-row">
+          <input id="referralLink" type="text" readonly aria-label="Referral link">
+        </div>
+        <div class="row"><span>直接下線</span><strong id="downlineCount">0</strong></div>
+        <div class="downlines" id="downlines"></div>
+      </div>
+
+      <div class="card-sdk" id="cardSdk">
+          <button class="secondary-button" id="backToSettingsButton" type="button" style="margin-bottom:14px;">← 回設定</button>
           <h2>我的名片</h2>
           <p>拍照或上傳名片，AI 只抽欄位，圖片與資料都存到 Wasabi。</p>
           <div class="button-row">
@@ -742,8 +934,14 @@ function renderAppHtml(env, url) {
             </div>
           </div>
         </div>
-      </aside>
-    </div>
+    </section>
+
+    <nav class="bottom-nav">
+      <button class="nav-button active" id="navHome" type="button">⌂<br>首頁</button>
+      <button class="nav-button" id="navCards" type="button">♟<br>名片酷</button>
+      <button class="nav-button" type="button">◎<br>配對</button>
+      <button class="nav-button" id="navSettings" type="button">●<br>設定</button>
+    </nav>
   </main>
   <script>
     const config = ${JSON.stringify({ storeCode, referralCode, liffId })};
@@ -751,6 +949,12 @@ function renderAppHtml(env, url) {
     const loginButton = document.getElementById("loginButton");
     const memberEl = document.getElementById("member");
     const cardSdkEl = document.getElementById("cardSdk");
+    const homeView = document.getElementById("homeView");
+    const settingsView = document.getElementById("settingsView");
+    const settingsList = document.getElementById("settingsList");
+    const navHome = document.getElementById("navHome");
+    const navCards = document.getElementById("navCards");
+    const navSettings = document.getElementById("navSettings");
     let currentIdToken = "";
     let currentSessionToken = "";
     let currentMember = null;
@@ -772,7 +976,8 @@ function renderAppHtml(env, url) {
       try {
         await liff.init({ liffId: config.liffId });
         if (!liff.isLoggedIn()) {
-          setStatus("請使用 LINE Login 登入。");
+          setStatus("正在開啟 LINE 登入...");
+          liff.login({ redirectUri: location.href });
           return;
         }
         await submitIdToken();
@@ -784,7 +989,7 @@ function renderAppHtml(env, url) {
     async function submitIdToken() {
       const idToken = liff.getIDToken();
       if (!idToken) {
-        setStatus("無法取得 LINE idToken，請重新登入。");
+        await restartLineLogin();
         return;
       }
       currentIdToken = idToken;
@@ -814,14 +1019,14 @@ function renderAppHtml(env, url) {
       document.getElementById("memberNo").textContent = result.member.memberNo;
       document.getElementById("myReferralCode").textContent = result.member.referralCode;
       document.getElementById("attribution").textContent = result.attribution.result || result.attribution.status;
+      document.getElementById("homeName").textContent = result.member.memberNo || "會員";
+      document.getElementById("homeRole").textContent = result.member.role === "admin" ? "總管" : "會員";
       const referralLink = new URL(location.href);
       referralLink.searchParams.set("storeCode", config.storeCode);
       referralLink.searchParams.set("ref", result.member.referralCode);
       document.getElementById("referralLink").value = referralLink.toString();
       renderDownlines(result.downlines || []);
       currentMember = result.member;
-      memberEl.classList.add("visible");
-      cardSdkEl.classList.add("visible");
       await loadMyCard();
       setStatus("登入完成");
     }
@@ -979,6 +1184,7 @@ function renderAppHtml(env, url) {
       document.getElementById("cardWebsite").value = view.website || "";
       document.getElementById("cardAddress").value = view.address || "";
       document.getElementById("cardIntro").value = view.intro || "";
+      if (view.name) document.getElementById("homeName").textContent = view.name;
       document.getElementById("cardShareLabel").value = cleanShareLabelInput(view.shareLabel);
       document.getElementById("cardShareColor").value = view.shareColor || "#ef4444";
       document.getElementById("ecardImageUrl").value = view.imageUrl || "";
@@ -1349,8 +1555,35 @@ function renderAppHtml(env, url) {
       }
     }
 
-    document.getElementById("copyReferralLink").addEventListener("click", async () => {
+    function showView(name) {
+      const isSettings = name === "settings";
+      homeView.classList.toggle("active", !isSettings);
+      settingsView.classList.toggle("active", isSettings);
+      navHome.classList.toggle("active", !isSettings);
+      navCards.classList.remove("active");
+      navSettings.classList.toggle("active", isSettings);
+      if (!isSettings) closeCardSettings();
+    }
+
+    function openCardSettings() {
+      showView("settings");
+      settingsList.style.display = "none";
+      memberEl.classList.remove("visible");
+      cardSdkEl.classList.add("visible");
+      setTimeout(() => cardSdkEl.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    }
+
+    function closeCardSettings() {
+      settingsList.style.display = "";
+      cardSdkEl.classList.remove("visible");
+    }
+
+    async function copyReferralLinkToClipboard() {
       const input = document.getElementById("referralLink");
+      if (!input.value) {
+        setStatus("登入完成後才會產生邀約連結");
+        return;
+      }
       input.select();
       try {
         await navigator.clipboard.writeText(input.value);
@@ -1359,7 +1592,17 @@ function renderAppHtml(env, url) {
         document.execCommand("copy");
         setStatus("推薦連結已複製");
       }
-    });
+    }
+
+    document.getElementById("copyReferralLink").addEventListener("click", copyReferralLinkToClipboard);
+    document.getElementById("homeShareReferral").addEventListener("click", copyReferralLinkToClipboard);
+    document.getElementById("openCardSettingsButton").addEventListener("click", openCardSettings);
+    document.getElementById("homeOpenCardButton").addEventListener("click", openCardSettings);
+    document.getElementById("navCards").addEventListener("click", openCardSettings);
+    document.getElementById("backToSettingsButton").addEventListener("click", closeCardSettings);
+    document.getElementById("navHome").addEventListener("click", () => showView("home"));
+    document.getElementById("navSettings").addEventListener("click", () => showView("settings"));
+    document.getElementById("refreshLoginButton").addEventListener("click", restartLineLogin);
 
     loginButton.addEventListener("click", async () => {
       if (!config.liffId) return;
