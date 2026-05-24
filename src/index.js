@@ -582,23 +582,10 @@ function renderAppHtml(env, url) {
       font-weight: 700;
       line-height: 1.55;
     }
-    .detail-button {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-top: 14px;
-      border: 1px solid #d5e5ff;
-      background: #eff6ff;
-      color: #2563eb;
-    }
     .detail-editor {
-      display: none;
-      margin-top: 12px;
-    }
-    .detail-editor.visible {
       display: grid;
       gap: 10px;
+      margin-top: 14px;
     }
     .save-config-button {
       margin-top: 14px;
@@ -716,9 +703,6 @@ function renderAppHtml(env, url) {
               <p class="ecard-note">開啟後分享名片會使用 LINE Flex video hero，封面圖片會作為縮圖。</p>
             </div>
           </div>
-          <button class="detail-button" id="toggleDetailEditor" type="button">
-            <span>☰ 編輯名片詳細文字資料</span><span>›</span>
-          </button>
           <div class="detail-editor" id="detailEditor">
             <div class="form-grid">
               <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
@@ -906,6 +890,12 @@ function renderAppHtml(env, url) {
       return text;
     }
 
+    function cleanShareLabelInput(value) {
+      const text = String(value || "").trim();
+      if (!text || /^https?:\\/\\//i.test(text) || /^\\/?card\\//i.test(text) || text.includes(".workers.dev")) return "分享";
+      return text.slice(0, 16);
+    }
+
     function setSelectedLayout(layout) {
       const normalized = normalizeLayoutName(layout);
       const input = document.querySelector('input[name="ecard-layout"][value="' + normalized + '"]');
@@ -923,7 +913,7 @@ function renderAppHtml(env, url) {
         website: document.getElementById("cardWebsite").value.trim(),
         address: document.getElementById("cardAddress").value.trim(),
         intro: document.getElementById("cardIntro").value.trim(),
-        shareLabel: document.getElementById("cardShareLabel").value.trim(),
+        shareLabel: cleanShareLabelInput(document.getElementById("cardShareLabel").value),
         shareColor: document.getElementById("cardShareColor").value,
         layout: getSelectedLayout(),
         imageUrl: cleanImageUrlInput(document.getElementById("ecardImageUrl").value),
@@ -944,7 +934,7 @@ function renderAppHtml(env, url) {
         website: card.website || "",
         address: card.address || "",
         intro: card.intro || "",
-        shareLabel: card.shareLabel || "分享",
+        shareLabel: cleanShareLabelInput(card.shareLabel),
         shareColor: card.shareColor || "#ef4444",
         buttons: Array.isArray(card.buttons) ? card.buttons : [],
         imageUrl: card.imageUrl || "",
@@ -985,7 +975,7 @@ function renderAppHtml(env, url) {
       document.getElementById("cardWebsite").value = view.website || "";
       document.getElementById("cardAddress").value = view.address || "";
       document.getElementById("cardIntro").value = view.intro || "";
-      document.getElementById("cardShareLabel").value = view.shareLabel || "分享";
+      document.getElementById("cardShareLabel").value = cleanShareLabelInput(view.shareLabel);
       document.getElementById("cardShareColor").value = view.shareColor || "#ef4444";
       document.getElementById("ecardImageUrl").value = view.imageUrl || "";
       document.getElementById("ecardVideoEnabled").checked = Boolean(view.videoEnabled);
@@ -1217,7 +1207,7 @@ function renderAppHtml(env, url) {
       const name = flexText(card.name, "我的名片", 80);
       const meta = [card.company, card.title].filter(Boolean).join(" / ");
       const intro = flexText(card.intro || meta || url, "點擊查看完整名片", 180);
-      const shareLabel = flexText(card.shareLabel, "分享", 16);
+      const shareLabel = cleanShareLabelInput(card.shareLabel);
       const shareColor = card.shareColor || "#ef4444";
       const shareActionUrl = appendShareMode(url);
       const buttons = [
@@ -1384,9 +1374,6 @@ function renderAppHtml(env, url) {
     document.getElementById("ecardCoverFile").addEventListener("change", uploadEcardImage);
     document.getElementById("cardImageFile").addEventListener("change", () => {
       setStatus("圖片已選擇，可按 AI 辨識抽取名片資料。");
-    });
-    document.getElementById("toggleDetailEditor").addEventListener("click", () => {
-      document.getElementById("detailEditor").classList.toggle("visible");
     });
     document.querySelectorAll('input[name="ecard-layout"]').forEach((input) => {
       input.addEventListener("change", (event) => {
@@ -1615,7 +1602,7 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
     website: normalizeUrl(standard.website || input.website),
     address: standard.address || input.address || "",
     intro: standard.intro || input.intro || "",
-    shareLabel: standard.shareLabel || input.shareLabel || "分享",
+    shareLabel: normalizeShareLabel(standard.shareLabel || input.shareLabel),
     shareColor: standard.shareColor || input.shareColor || "#ef4444",
     layout: activeLayout,
     buttons: normalizeCardButtons(standard.buttons || input.buttons, standard),
@@ -1655,7 +1642,7 @@ async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
     ...card,
     publicUrl: card.publicUrl || publicUrls[DEFAULT_CARD_LAYOUT],
     publicUrls,
-    shareLabel: card.shareLabel || "分享",
+    shareLabel: normalizeShareLabel(card.shareLabel),
     shareColor: card.shareColor || "#ef4444",
     layout: normalizeCardLayout(card.layout),
     buttons: normalizeCardButtons(card.buttons, card),
@@ -1685,7 +1672,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
   const websiteHref = normalizeUrl(card.website);
   const mapHref = card.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}` : "";
   const websiteText = websiteHref ? websiteHref.replace(/^https?:\/\//i, "") : "";
-  const shareLabel = card.shareLabel || "分享";
+  const shareLabel = normalizeShareLabel(card.shareLabel);
   const shareColor = safeCssColor(card.shareColor, "#ef4444");
   const buttons = normalizeCardButtons(card.buttons, card);
   const actionHtml = buttons.map((button) => `<a href="${escapeHtml(normalizeActionUrl(button.url))}" style="background:${escapeHtml(safeCssColor(button.color, "#06c755"))}">${escapeHtml(button.label)}</a>`).join("");
@@ -1854,7 +1841,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       const shareActionUrl = appendPublicShareMode(shareConfig.url);
       const name = publicFlexText(card.name, "我的名片", 80);
       const meta = publicFlexText(card.meta, "SDK 名片王", 100);
-      const shareLabel = publicFlexText(card.shareLabel, "分享", 16);
+      const shareLabel = publicFlexText(card.shareLabel, "分享", 16).replace(/^https?:\\/\\/.*/i, "分享");
       const shareColor = card.shareColor || "#ef4444";
       const buttons = [
         { label: "查看名片", url: shareConfig.url, color: "#06C755" },
@@ -2045,7 +2032,7 @@ function normalizeBusinessCard(source, origin) {
     website: normalizeUrl(cleanText(source.website, 240)),
     address: cleanText(source.address, 240),
     intro: cleanText(source.intro, 600),
-    shareLabel: cleanText(source.shareLabel, 20) || "分享",
+    shareLabel: normalizeShareLabel(source.shareLabel),
     shareColor: safeCssColor(source.shareColor, "#ef4444"),
     layout: normalizeCardLayout(source.layout),
     buttons: normalizeCardButtons(source.buttons, source),
@@ -2068,7 +2055,7 @@ function layoutBaseFromCard(source) {
     website: normalizeUrl(cleanText(source.website, 240)),
     address: cleanText(source.address, 240),
     intro: cleanText(source.intro, 600),
-    shareLabel: cleanText(source.shareLabel, 20) || "分享",
+    shareLabel: normalizeShareLabel(source.shareLabel),
     shareColor: safeCssColor(source.shareColor, "#ef4444"),
     buttons: normalizeCardButtons(source.buttons, source),
     imageUrl: normalizeImageUrl(source.imageUrl),
@@ -2232,6 +2219,12 @@ function normalizeImageUrl(value) {
   if (!raw || /^data:image\//i.test(raw)) return "";
   const url = normalizeUrl(raw);
   return /^https:\/\//i.test(url) ? url : "";
+}
+
+function normalizeShareLabel(value) {
+  const text = cleanText(value, 20);
+  if (!text || /^https?:\/\//i.test(text) || /^\/?card\//i.test(text) || text.includes(".workers.dev")) return "分享";
+  return text.slice(0, 16);
 }
 
 async function getReferralDownlines(storage, tenantId, parentTenantMemberId) {
