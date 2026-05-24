@@ -462,10 +462,11 @@ function renderAppHtml(env, url) {
     }
     .secondary-button {
       min-height: 40px;
-      background: #233142;
+      background: var(--accent);
+      color: #fff;
       font-size: 14px;
     }
-    .secondary-button:hover { background: #111827; }
+    .secondary-button:hover { background: var(--accent-dark); }
     .downlines {
       display: grid;
       gap: 8px;
@@ -556,11 +557,50 @@ function renderAppHtml(env, url) {
       background: #fbfdff;
       color: var(--muted);
     }
+    .hidden-file {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
     .button-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       margin-top: 12px;
+    }
+    .scan-panel {
+      margin: 16px 0;
+      padding: 18px;
+      border-radius: 18px;
+      background: #fff;
+      border: 1px solid #e5edf5;
+    }
+    .scan-title {
+      margin: 0 0 14px;
+      color: #172033;
+      font-size: 22px;
+      font-weight: 900;
+    }
+    .scan-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .scan-action {
+      min-height: 112px;
+      border: 1px solid #cfe4ff;
+      border-radius: 16px;
+      background: #eef6ff;
+      color: #2563eb;
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .scan-action span {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 30px;
     }
     .url-grid {
       display: grid;
@@ -904,11 +944,20 @@ function renderAppHtml(env, url) {
           <button class="secondary-button" id="backToSettingsButton" type="button" style="margin-bottom:14px;">← 回設定</button>
           <h2>我的名片</h2>
           <p>拍照或上傳名片，AI 只抽欄位，圖片與資料都存到 Wasabi。</p>
+          <div class="scan-panel">
+            <div class="scan-title">▣ 掃描建立名片</div>
+            <div class="scan-actions">
+              <button class="scan-action" id="captureCardButton" type="button"><span>▣</span>拍照掃描</button>
+              <button class="scan-action" id="uploadCardPhotoButton" type="button"><span>▧</span>相簿上傳</button>
+            </div>
+          </div>
           <div class="button-row">
             <button class="secondary-button" id="recognizeCardButton" type="button">AI 辨識</button>
             <button class="secondary-button" id="saveCardButton" type="button">儲存名片設定</button>
           </div>
-          <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
+          <input class="hidden-file" id="cardCameraFile" type="file" accept="image/*" capture="environment">
+          <input class="hidden-file" id="cardAlbumFile" type="file" accept="image/*">
+          <input class="hidden-file" id="cardImageFile" type="file" accept="image/*">
           <input id="ecardCoverFile" type="file" accept="image/*" hidden>
           <div class="card-tabs">
             <button class="card-tab" type="button" data-card-tab="contact">📋 聯絡資料</button>
@@ -1027,6 +1076,7 @@ function renderAppHtml(env, url) {
     let currentCard = null;
     let activeCardLayout = "standard";
     let selectedCardImages = {};
+    let selectedRecognizeFile = null;
     let cardButtons = [];
 
     function setStatus(text) {
@@ -1378,7 +1428,7 @@ function renderAppHtml(env, url) {
     }
 
     async function recognizeSelectedCard() {
-      const file = document.getElementById("cardImageFile").files[0];
+      const file = selectedRecognizeFile || document.getElementById("cardImageFile").files[0];
       let imageDataUrl = selectedCardImages[activeCardLayout];
       if (!imageDataUrl && file) {
         imageDataUrl = await compressCardImage(file, 1600);
@@ -1440,7 +1490,10 @@ function renderAppHtml(env, url) {
       }
       currentCard = result.card;
       selectedCardImages = {};
+      selectedRecognizeFile = null;
       document.getElementById("cardImageFile").value = "";
+      document.getElementById("cardCameraFile").value = "";
+      document.getElementById("cardAlbumFile").value = "";
       document.getElementById("ecardCoverFile").value = "";
       fillCardForm(currentCard, layout);
       if (!options.quiet) setStatus("名片設定已儲存。");
@@ -1622,6 +1675,13 @@ function renderAppHtml(env, url) {
       }
     }
 
+    function setRecognizeFile(file) {
+      selectedRecognizeFile = file || null;
+      if (selectedRecognizeFile) {
+        setStatus("圖片已選擇，可按 AI 辨識抽取名片資料。");
+      }
+    }
+
     function showView(name) {
       const isSettings = name === "settings";
       homeView.classList.toggle("active", !isSettings);
@@ -1757,6 +1817,10 @@ function renderAppHtml(env, url) {
     document.getElementById("saveCardButton").addEventListener("click", () => saveBusinessCard());
     document.getElementById("saveEcardConfigButton").addEventListener("click", () => saveBusinessCard());
     document.getElementById("shareCardButton").addEventListener("click", shareBusinessCard);
+    document.getElementById("captureCardButton").addEventListener("click", () => document.getElementById("cardCameraFile").click());
+    document.getElementById("uploadCardPhotoButton").addEventListener("click", () => document.getElementById("cardAlbumFile").click());
+    document.getElementById("cardCameraFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0]));
+    document.getElementById("cardAlbumFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0]));
     document.getElementById("uploadEcardImageButton").addEventListener("click", () => document.getElementById("ecardCoverFile").click());
     document.getElementById("ecardCoverFile").addEventListener("change", uploadEcardImage);
     document.getElementById("cardImageFile").addEventListener("change", () => {
