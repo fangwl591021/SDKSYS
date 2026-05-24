@@ -11,6 +11,8 @@ const HTML_HEADERS = {
 };
 
 const DEFAULT_RELEASE_MONTHS = 6;
+const CARD_LAYOUTS = ["classic", "poster", "links"];
+const DEFAULT_CARD_LAYOUT = "poster";
 
 export default {
   async fetch(request, env) {
@@ -41,8 +43,8 @@ export default {
 
       if (url.pathname.startsWith("/card/") && request.method === "GET") {
         const storage = createWasabiClient(env);
-        const slug = cleanSlug(decodeURIComponent(url.pathname.slice("/card/".length)));
-        return html(await renderPublicCardHtml(storage, slug, url.origin));
+        const route = parseCardRoute(url.pathname);
+        return html(await renderPublicCardHtml(storage, route.slug, url.origin, route.layout));
       }
 
       if (url.pathname.startsWith("/asset/") && request.method === "GET") {
@@ -344,7 +346,7 @@ function renderAppHtml(env, url) {
       font-size: 13px;
       font-weight: 700;
     }
-    .field input, .field textarea {
+    .field input, .field textarea, .field select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -371,6 +373,82 @@ function renderAppHtml(env, url) {
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       margin-top: 12px;
+    }
+    .url-grid {
+      display: grid;
+      gap: 8px;
+      margin: 14px 0;
+    }
+    .url-grid label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .url-grid input, .url-grid select {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--ink);
+      background: white;
+      font: inherit;
+    }
+    .compact-grid {
+      display: grid;
+      grid-template-columns: minmax(0,1fr) 82px;
+      gap: 10px;
+    }
+    .button-editor {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .button-item {
+      display: grid;
+      grid-template-columns: 42px minmax(0,1fr) 46px 46px;
+      gap: 8px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+    }
+    .button-item input[type="color"] {
+      width: 42px;
+      height: 42px;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+    }
+    .button-fields {
+      display: grid;
+      gap: 7px;
+    }
+    .button-fields input {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 7px 9px;
+      color: var(--ink);
+      background: white;
+      font: inherit;
+    }
+    .icon-button {
+      width: 46px;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+    }
+    .danger-button {
+      background: #fff1f3;
+      color: #dc2626;
+      border-color: #ffe0e5;
     }
     .card-preview {
       display: none;
@@ -459,9 +537,34 @@ function renderAppHtml(env, url) {
             <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
             <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
             <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
+            <div class="compact-grid">
+              <div class="field">
+                <label for="cardShareLabel">分享標籤</label>
+                <input id="cardShareLabel" placeholder="分享">
+              </div>
+              <div class="field">
+                <label for="cardShareColor">顏色</label>
+                <input id="cardShareColor" type="color" value="#ef4444">
+              </div>
+            </div>
+            <div class="field">
+              <label for="cardLayout">分享版型</label>
+              <select id="cardLayout">
+                <option value="poster">直式行動版</option>
+                <option value="classic">實體名片版</option>
+                <option value="links">連結按鈕版</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>底部按鈕設定</label>
+              <div class="button-editor" id="cardButtonEditor"></div>
+              <button class="secondary-button" id="addCardButton" type="button" style="margin-top: 10px;">+ 新增按鈕</button>
+            </div>
           </div>
-          <div class="copy-row">
-            <input id="publicCardUrl" type="text" readonly aria-label="Public card URL">
+          <div class="url-grid">
+            <label>直式行動版<input id="publicCardUrlPoster" type="text" readonly></label>
+            <label>實體名片版<input id="publicCardUrlClassic" type="text" readonly></label>
+            <label>連結按鈕版<input id="publicCardUrlLinks" type="text" readonly></label>
             <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
           </div>
           <div class="card-preview" id="cardPreview">
@@ -486,6 +589,7 @@ function renderAppHtml(env, url) {
     let currentMember = null;
     let currentCard = null;
     let selectedCardImage = "";
+    let cardButtons = [];
 
     function setStatus(text) {
       statusEl.textContent = text;
@@ -615,6 +719,10 @@ function renderAppHtml(env, url) {
         website: document.getElementById("cardWebsite").value.trim(),
         address: document.getElementById("cardAddress").value.trim(),
         intro: document.getElementById("cardIntro").value.trim(),
+        shareLabel: document.getElementById("cardShareLabel").value.trim(),
+        shareColor: document.getElementById("cardShareColor").value,
+        layout: document.getElementById("cardLayout").value,
+        buttons: getCardButtons(),
       };
     }
 
@@ -628,7 +736,15 @@ function renderAppHtml(env, url) {
       document.getElementById("cardWebsite").value = card.website || "";
       document.getElementById("cardAddress").value = card.address || "";
       document.getElementById("cardIntro").value = card.intro || "";
-      document.getElementById("publicCardUrl").value = card.publicUrl || "";
+      document.getElementById("cardShareLabel").value = card.shareLabel || "分享";
+      document.getElementById("cardShareColor").value = card.shareColor || "#ef4444";
+      document.getElementById("cardLayout").value = card.layout || "poster";
+      cardButtons = Array.isArray(card.buttons) ? card.buttons.slice(0, 6) : defaultCardButtons(card);
+      renderCardButtonEditor();
+      const urls = card.publicUrls || {};
+      document.getElementById("publicCardUrlPoster").value = urls.poster || card.publicUrl || "";
+      document.getElementById("publicCardUrlClassic").value = urls.classic || card.publicUrl || "";
+      document.getElementById("publicCardUrlLinks").value = urls.links || card.publicUrl || "";
       renderCardPreview(card);
     }
 
@@ -643,6 +759,88 @@ function renderAppHtml(env, url) {
       document.getElementById("cardPreviewTitle").textContent = card.name || "未命名名片";
       document.getElementById("cardPreviewMeta").textContent = [card.company, card.title, card.phone, card.email].filter(Boolean).join(" / ");
       preview.classList.add("visible");
+    }
+
+    function cleanPhoneForLink(value) {
+      return String(value || "").replace(/[^0-9+]/g, "");
+    }
+
+    function defaultCardButtons(card) {
+      const buttons = [];
+      const phone = cleanPhoneForLink(card && card.phone);
+      if (phone) buttons.push({ label: "行動電話", url: "tel:" + phone, color: "#9b1c0c" });
+      if (card && card.address) buttons.push({ label: "店家地址", url: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(card.address), color: "#1f2937" });
+      if (card && card.website) buttons.push({ label: "開啟網站", url: card.website, color: "#06c755" });
+      return buttons.length ? buttons.slice(0, 6) : [
+        { label: "加LINE好友", url: "https://line.me/R/ti/p/", color: "#06c755" },
+        { label: "店家地址", url: "https://www.google.com/maps", color: "#1f2937" },
+        { label: "行動電話", url: "tel:", color: "#9b1c0c" },
+      ];
+    }
+
+    function getCardButtons() {
+      return cardButtons.map((button) => ({
+        label: String(button.label || "").trim(),
+        url: String(button.url || "").trim(),
+        color: String(button.color || "#06c755").trim(),
+      })).filter((button) => button.label && button.url).slice(0, 6);
+    }
+
+    function renderCardButtonEditor() {
+      const editor = document.getElementById("cardButtonEditor");
+      editor.innerHTML = "";
+      cardButtons.forEach((button, index) => {
+        const row = document.createElement("div");
+        row.className = "button-item";
+
+        const color = document.createElement("input");
+        color.type = "color";
+        color.value = button.color || "#06c755";
+        color.addEventListener("input", () => { cardButtons[index].color = color.value; });
+
+        const fields = document.createElement("div");
+        fields.className = "button-fields";
+        const label = document.createElement("input");
+        label.placeholder = "按鈕文字";
+        label.value = button.label || "";
+        label.addEventListener("input", () => { cardButtons[index].label = label.value; });
+        const url = document.createElement("input");
+        url.placeholder = "https:// / tel: / mailto:";
+        url.value = button.url || "";
+        url.addEventListener("input", () => { cardButtons[index].url = url.value; });
+        fields.append(label, url);
+
+        const move = document.createElement("button");
+        move.type = "button";
+        move.className = "icon-button";
+        move.textContent = index === 0 ? "↓" : "↑";
+        move.addEventListener("click", () => {
+          const target = index === 0 ? 1 : index - 1;
+          if (target < 0 || target >= cardButtons.length) return;
+          const current = cardButtons[index];
+          cardButtons[index] = cardButtons[target];
+          cardButtons[target] = current;
+          renderCardButtonEditor();
+        });
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "icon-button danger-button";
+        remove.textContent = "刪";
+        remove.addEventListener("click", () => {
+          cardButtons.splice(index, 1);
+          renderCardButtonEditor();
+        });
+
+        row.append(color, fields, move, remove);
+        editor.appendChild(row);
+      });
+    }
+
+    function selectedPublicCardUrl(card) {
+      const layout = document.getElementById("cardLayout").value || "poster";
+      const urls = (card && card.publicUrls) || {};
+      return urls[layout] || card?.publicUrl || "";
     }
 
     async function loadMyCard() {
@@ -724,23 +922,40 @@ function renderAppHtml(env, url) {
       const name = flexText(card.name, "我的名片", 80);
       const meta = [card.company, card.title].filter(Boolean).join(" / ");
       const intro = flexText(card.intro || meta || url, "點擊查看完整名片", 180);
-      const website = card.website && /^https?:\\/\\//i.test(card.website) ? card.website : "";
-      const phone = card.phone ? String(card.phone).replace(/[^0-9+]/g, "") : "";
+      const shareLabel = flexText(card.shareLabel, "分享", 16);
+      const shareColor = card.shareColor || "#ef4444";
       const buttons = [
-        { label: "查看名片", uri: url, color: "#06C755" },
-        phone ? { label: "撥打電話", uri: "tel:" + phone, color: "#233142" } : null,
-        website ? { label: "開啟網站", uri: website, color: "#3b82f6" } : null,
-      ].filter(Boolean).slice(0, 3);
+        { label: "查看名片", url, color: "#06C755" },
+        ...getCardButtons(),
+      ].slice(0, 4);
       const bubble = {
         type: "bubble",
         size: "mega",
+        header: {
+          type: "box",
+          layout: "horizontal",
+          justifyContent: "flex-end",
+          paddingAll: "12px",
+          contents: [{
+            type: "box",
+            layout: "vertical",
+            backgroundColor: shareColor,
+            cornerRadius: "100px",
+            paddingTop: "6px",
+            paddingBottom: "6px",
+            paddingStart: "18px",
+            paddingEnd: "18px",
+            contents: [{ type: "text", text: shareLabel, color: "#ffffff", weight: "bold", size: "sm", align: "center" }],
+            action: { type: "uri", uri: url },
+          }],
+        },
         body: {
           type: "box",
           layout: "vertical",
           spacing: "md",
           contents: [
-            { type: "text", text: name, weight: "bold", size: "xl", wrap: true, color: "#1f2933" },
-            { type: "text", text: flexText(meta, "SDK 名片王", 100), size: "sm", color: "#607080", wrap: true },
+            { type: "text", text: name, weight: "bold", size: "xl", wrap: true, align: "center", color: "#1f2933" },
+            { type: "text", text: flexText(meta, "SDK 名片王", 100), size: "sm", color: "#607080", wrap: true, align: "center" },
             { type: "separator", margin: "md" },
             { type: "text", text: intro, size: "sm", color: "#364756", wrap: true, margin: "md" },
           ],
@@ -754,8 +969,8 @@ function renderAppHtml(env, url) {
             type: "button",
             style: "primary",
             height: "sm",
-            color: button.color,
-            action: { type: "uri", label: button.label, uri: button.uri },
+            color: button.color || "#06C755",
+            action: { type: "uri", label: flexText(button.label, "開啟", 20), uri: button.url || url },
           })),
         },
       };
@@ -777,14 +992,15 @@ function renderAppHtml(env, url) {
     }
 
     async function shareBusinessCard() {
-      const url = document.getElementById("publicCardUrl").value;
+      const liveCard = { ...(currentCard || {}), ...getCardFormData() };
+      const url = selectedPublicCardUrl(liveCard);
       if (!url) {
         setStatus("請先儲存名片");
         return;
       }
       try {
         if (window.liff && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
-          await liff.shareTargetPicker([buildCardFlexMessage(currentCard, url)]);
+          await liff.shareTargetPicker([buildCardFlexMessage(liveCard, url)]);
           setStatus("已開啟 LINE 分享");
           return;
         }
@@ -843,6 +1059,10 @@ function renderAppHtml(env, url) {
     document.getElementById("recognizeCardButton").addEventListener("click", recognizeSelectedCard);
     document.getElementById("saveCardButton").addEventListener("click", saveBusinessCard);
     document.getElementById("shareCardButton").addEventListener("click", shareBusinessCard);
+    document.getElementById("addCardButton").addEventListener("click", () => {
+      cardButtons.push({ label: "新增按鈕", url: "https://", color: "#06c755" });
+      renderCardButtonEditor();
+    });
 
     boot();
   </script>
@@ -985,6 +1205,7 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
   const existing = (await storage.getJson(`business-cards/${session.tenant.tenantId}/${session.tenantMemberId}.json`)).value || {};
   const input = normalizeBusinessCard(payload.card || {}, origin);
   const slug = existing.publicSlug || createCardSlug(session.member.memberNo);
+  const publicUrls = createCardUrls(origin, slug);
   let imageUrl = existing.imageUrl || "";
   let imageKey = existing.imageKey || "";
 
@@ -1008,7 +1229,8 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
     tenantMemberId: session.tenantMemberId,
     memberNo: session.member.memberNo,
     publicSlug: slug,
-    publicUrl: `${origin}/card/${encodeURIComponent(slug)}`,
+    publicUrl: publicUrls[DEFAULT_CARD_LAYOUT],
+    publicUrls,
     name: input.name || session.lineProfile.name || "",
     title: input.title || "",
     company: input.company || session.tenant.name || "",
@@ -1017,6 +1239,14 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
     website: normalizeUrl(input.website),
     address: input.address || "",
     intro: input.intro || "",
+    shareLabel: input.shareLabel || "分享",
+    shareColor: input.shareColor || "#ef4444",
+    layout: input.layout || DEFAULT_CARD_LAYOUT,
+    buttons: normalizeCardButtons(input.buttons, {
+      phone: input.phone,
+      address: input.address,
+      website: normalizeUrl(input.website),
+    }),
     imageUrl,
     imageKey,
     status: "published",
@@ -1039,25 +1269,32 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
 async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
   const card = (await storage.getJson(`business-cards/${tenantId}/${tenantMemberId}.json`)).value;
   if (!card) return null;
+  const publicUrls = card.publicUrls || createCardUrls(origin, card.publicSlug);
   return {
     ...card,
-    publicUrl: card.publicUrl || `${origin}/card/${encodeURIComponent(card.publicSlug)}`,
+    publicUrl: card.publicUrl || publicUrls[DEFAULT_CARD_LAYOUT],
+    publicUrls,
+    shareLabel: card.shareLabel || "分享",
+    shareColor: card.shareColor || "#ef4444",
+    layout: normalizeCardLayout(card.layout),
+    buttons: normalizeCardButtons(card.buttons, card),
   };
 }
 
-async function renderPublicCardHtml(storage, slug, origin) {
+async function renderPublicCardHtml(storage, slug, origin, layout = DEFAULT_CARD_LAYOUT) {
   const index = (await storage.getJson(`card-index/public-slugs/${slug}.json`)).value;
   if (!index || index.status !== "published") {
     return renderPublicCardShell(null, origin);
   }
   const card = await readBusinessCard(storage, index.tenantId, index.tenantMemberId, origin);
-  return renderPublicCardShell(card, origin);
+  return renderPublicCardShell(card, origin, normalizeCardLayout(layout));
 }
 
-function renderPublicCardShell(card, origin) {
+function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT) {
   if (!card) {
     return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Card not found</title></head><body style="font-family:system-ui;padding:32px;">Card not found</body></html>`;
   }
+  layout = normalizeCardLayout(layout);
   const title = card.name || "Business Card";
   const meta = [card.company, card.title].filter(Boolean).join(" / ");
   const phoneHref = card.phone ? `tel:${card.phone.replace(/[^0-9+]/g, "")}` : "";
@@ -1065,6 +1302,12 @@ function renderPublicCardShell(card, origin) {
   const websiteHref = normalizeUrl(card.website);
   const mapHref = card.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}` : "";
   const websiteText = websiteHref ? websiteHref.replace(/^https?:\/\//i, "") : "";
+  const shareLabel = card.shareLabel || "分享";
+  const shareColor = safeCssColor(card.shareColor, "#ef4444");
+  const buttons = normalizeCardButtons(card.buttons, card);
+  const actionHtml = buttons.map((button) => `<a href="${escapeHtml(normalizeActionUrl(button.url))}" style="background:${escapeHtml(safeCssColor(button.color, "#06c755"))}">${escapeHtml(button.label)}</a>`).join("");
+  const image = card.imageUrl ? `<img src="${escapeHtml(card.imageUrl)}" alt="">` : `<div class="visual-empty">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</div>`;
+  const bodyClass = `layout-${layout}`;
   return `<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -1075,60 +1318,110 @@ function renderPublicCardShell(card, origin) {
   <meta property="og:description" content="${escapeHtml(meta || card.intro || "")}">
   ${card.imageUrl ? `<meta property="og:image" content="${escapeHtml(card.imageUrl)}">` : ""}
   <style>
+    * { box-sizing:border-box; }
     body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2933; background:#eef3f5; }
     main { width:min(760px, calc(100% - 28px)); margin:0 auto; padding:24px 0; }
-    .physical { aspect-ratio: 1.78 / 1; background:white; border:1px solid #d8e0e8; border-radius:8px; overflow:hidden; box-shadow:0 18px 44px rgba(25,42,61,.12); display:grid; grid-template-columns:1fr 38%; min-height:320px; }
-    .info { padding:34px; display:flex; flex-direction:column; justify-content:space-between; border-left:8px solid #06c755; }
-    .brand { color:#607080; font-weight:700; letter-spacing:0; }
-    h1 { margin:8px 0 8px; font-size:40px; letter-spacing:0; line-height:1.05; }
-    .meta { color:#364756; font-size:18px; line-height:1.45; }
-    .intro { margin-top:18px; white-space:pre-line; line-height:1.65; color:#607080; }
-    .contacts { display:grid; gap:7px; margin-top:20px; color:#364756; font-size:15px; }
-    .contacts a { color:#1f2933; text-decoration:none; word-break:break-word; }
-    .visual { background:#f8fbff; display:flex; align-items:center; justify-content:center; padding:18px; }
-    .visual img { width:100%; height:100%; max-height:100%; object-fit:contain; border-radius:6px; background:white; box-shadow:0 10px 28px rgba(25,42,61,.10); }
+    .card-shell { position:relative; background:white; border:1px solid #d8e0e8; border-radius:20px; overflow:hidden; box-shadow:0 18px 44px rgba(25,42,61,.12); }
+    .share-head { min-height:52px; display:flex; justify-content:flex-end; align-items:center; padding:10px 12px; }
+    .share-badge { display:inline-flex; align-items:center; justify-content:center; min-width:82px; min-height:32px; border-radius:999px; padding:6px 18px; color:white; font-weight:900; text-decoration:none; background:${escapeHtml(shareColor)}; }
+    .hero { background:#f8fbff; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .hero img { width:100%; height:100%; object-fit:cover; display:block; }
     .visual-empty { width:120px; height:120px; border-radius:8px; background:#06c755; color:white; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:900; }
-    .actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:16px; }
-    .actions a { display:block; text-decoration:none; text-align:center; padding:12px 14px; border-radius:8px; font-weight:800; background:#06c755; color:white; }
-    .actions a.secondary { background:#233142; }
+    h1 { margin:0; letter-spacing:0; line-height:1.08; }
+    .meta { color:#364756; line-height:1.45; }
+    .intro { white-space:pre-line; line-height:1.65; color:#1f2a44; }
+    .contacts { display:grid; gap:7px; color:#364756; font-size:15px; }
+    .contacts a { color:#1f2933; text-decoration:none; word-break:break-word; }
+    .actions { display:grid; gap:10px; }
+    .actions a { display:block; text-decoration:none; text-align:center; padding:13px 16px; border-radius:8px; font-weight:900; color:white; }
+    .layout-poster main { width:min(430px, calc(100% - 24px)); }
+    .layout-poster .hero { aspect-ratio:20/13; }
+    .layout-poster .body { padding:24px 26px 12px; text-align:center; }
+    .layout-poster h1 { font-size:30px; margin-bottom:12px; }
+    .layout-poster .intro { margin:14px 0 0; text-align:left; }
+    .layout-poster .actions { padding:22px 26px 26px; }
+    .layout-classic main { width:min(860px, calc(100% - 28px)); }
+    .layout-classic .physical { display:grid; grid-template-columns:minmax(0,1fr) 38%; min-height:340px; }
+    .layout-classic .share-head { position:absolute; top:0; right:0; z-index:2; }
+    .layout-classic .info { padding:64px 34px 30px; display:flex; flex-direction:column; justify-content:space-between; border-left:8px solid #06c755; }
+    .layout-classic .brand { color:#607080; font-weight:800; }
+    .layout-classic h1 { font-size:40px; margin:8px 0; }
+    .layout-classic .meta { font-size:18px; }
+    .layout-classic .intro { margin-top:18px; color:#607080; }
+    .layout-classic .hero { min-height:340px; padding:18px; }
+    .layout-classic .hero img { object-fit:contain; border-radius:6px; box-shadow:0 10px 28px rgba(25,42,61,.10); }
+    .layout-classic .actions { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:16px; }
+    .layout-links main { width:min(430px, calc(100% - 24px)); }
+    .layout-links .card-shell { padding-bottom:22px; }
+    .layout-links .profile { padding:10px 26px 16px; text-align:center; }
+    .layout-links .avatar { width:112px; height:112px; margin:0 auto 16px; border-radius:24px; overflow:hidden; background:#eef3f5; display:grid; place-items:center; }
+    .layout-links .avatar img { width:100%; height:100%; object-fit:cover; }
+    .layout-links h1 { font-size:28px; margin-bottom:8px; }
+    .layout-links .intro { margin-top:14px; color:#607080; }
+    .layout-links .contacts { padding:0 26px 16px; text-align:center; }
+    .layout-links .actions { padding:0 26px; }
     @media (max-width: 680px) {
-      .physical { aspect-ratio:auto; grid-template-columns:1fr; }
-      .visual { order:-1; min-height:220px; }
-      .info { padding:24px; }
+      .layout-classic .physical { grid-template-columns:1fr; }
+      .layout-classic .hero { order:-1; min-height:220px; }
+      .layout-classic .info { padding:64px 24px 24px; }
       h1 { font-size:32px; }
-      .actions { grid-template-columns:1fr; }
+      .layout-classic .actions { grid-template-columns:1fr; }
     }
   </style>
 </head>
-<body>
+<body class="${escapeHtml(bodyClass)}">
   <main>
-    <section class="physical">
-      <div class="info">
-        <div>
-          <div class="brand">${escapeHtml(card.company || "SDKSYS")}</div>
+    ${layout === "classic" ? `
+      <section class="card-shell physical">
+        <div class="share-head"><a class="share-badge" href="${escapeHtml(card.publicUrls?.classic || card.publicUrl || "#")}">${escapeHtml(shareLabel)}</a></div>
+        <div class="info">
+          <div>
+            <div class="brand">${escapeHtml(card.company || "SDKSYS")}</div>
+            <h1>${escapeHtml(title)}</h1>
+            <div class="meta">${escapeHtml(card.title || "")}</div>
+            <div class="intro">${escapeHtml(card.intro || "")}</div>
+          </div>
+          <div>
+            <div class="contacts">
+              ${card.phone ? `<a href="${escapeHtml(phoneHref)}">${escapeHtml(card.phone)}</a>` : ""}
+              ${card.email ? `<a href="${escapeHtml(emailHref)}">${escapeHtml(card.email)}</a>` : ""}
+              ${websiteHref ? `<a href="${escapeHtml(websiteHref)}">${escapeHtml(websiteText)}</a>` : ""}
+              ${card.address ? `<a href="${escapeHtml(mapHref)}">${escapeHtml(card.address)}</a>` : ""}
+            </div>
+            ${actionHtml ? `<div class="actions">${actionHtml}</div>` : ""}
+          </div>
+        </div>
+        <div class="hero">${image}</div>
+      </section>
+    ` : layout === "links" ? `
+      <section class="card-shell">
+        <div class="share-head"><a class="share-badge" href="${escapeHtml(card.publicUrls?.links || card.publicUrl || "#")}">${escapeHtml(shareLabel)}</a></div>
+        <div class="profile">
+          <div class="avatar">${image}</div>
           <h1>${escapeHtml(title)}</h1>
-          <div class="meta">${escapeHtml(card.title || "")}</div>
+          <div class="meta">${escapeHtml(meta)}</div>
           <div class="intro">${escapeHtml(card.intro || "")}</div>
         </div>
-        <div>
-          <div class="contacts">
-            ${card.phone ? `<a href="${escapeHtml(phoneHref)}">${escapeHtml(card.phone)}</a>` : ""}
-            ${card.email ? `<a href="${escapeHtml(emailHref)}">${escapeHtml(card.email)}</a>` : ""}
-            ${websiteHref ? `<a href="${escapeHtml(websiteHref)}">${escapeHtml(websiteText)}</a>` : ""}
-            ${card.address ? `<a href="${escapeHtml(mapHref)}">${escapeHtml(card.address)}</a>` : ""}
-          </div>
-          <div class="actions">
-            ${phoneHref ? `<a href="${escapeHtml(phoneHref)}">撥打電話</a>` : ""}
-            ${emailHref ? `<a class="secondary" href="${escapeHtml(emailHref)}">Email</a>` : ""}
-            ${websiteHref ? `<a class="secondary" href="${escapeHtml(websiteHref)}">網站</a>` : ""}
-            ${mapHref ? `<a class="secondary" href="${escapeHtml(mapHref)}">地址</a>` : ""}
-          </div>
+        <div class="contacts">
+          ${card.phone ? `<a href="${escapeHtml(phoneHref)}">${escapeHtml(card.phone)}</a>` : ""}
+          ${card.email ? `<a href="${escapeHtml(emailHref)}">${escapeHtml(card.email)}</a>` : ""}
+          ${websiteHref ? `<a href="${escapeHtml(websiteHref)}">${escapeHtml(websiteText)}</a>` : ""}
+          ${card.address ? `<a href="${escapeHtml(mapHref)}">${escapeHtml(card.address)}</a>` : ""}
         </div>
-      </div>
-      <div class="visual">
-        ${card.imageUrl ? `<img src="${escapeHtml(card.imageUrl)}" alt="">` : `<div class="visual-empty">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</div>`}
-      </div>
-    </section>
+        ${actionHtml ? `<div class="actions">${actionHtml}</div>` : ""}
+      </section>
+    ` : `
+      <section class="card-shell">
+        <div class="share-head"><a class="share-badge" href="${escapeHtml(card.publicUrls?.poster || card.publicUrl || "#")}">${escapeHtml(shareLabel)}</a></div>
+        <div class="hero">${image}</div>
+        <div class="body">
+          <h1>${escapeHtml(title)}</h1>
+          <div class="meta">${escapeHtml(meta)}</div>
+          <div class="intro">${escapeHtml(card.intro || "")}</div>
+        </div>
+        ${actionHtml ? `<div class="actions">${actionHtml}</div>` : ""}
+      </section>
+    `}
   </main>
 </body>
 </html>`;
@@ -1217,8 +1510,70 @@ function normalizeBusinessCard(source, origin) {
     website: normalizeUrl(cleanText(source.website, 240)),
     address: cleanText(source.address, 240),
     intro: cleanText(source.intro, 600),
+    shareLabel: cleanText(source.shareLabel, 20) || "分享",
+    shareColor: safeCssColor(source.shareColor, "#ef4444"),
+    layout: normalizeCardLayout(source.layout),
+    buttons: normalizeCardButtons(source.buttons, source),
     imageUrl: source.imageUrl && String(source.imageUrl).startsWith(origin) ? String(source.imageUrl) : "",
   };
+}
+
+function parseCardRoute(pathname) {
+  const parts = pathname.slice("/card/".length).split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+  return {
+    slug: cleanSlug(parts[0] || ""),
+    layout: normalizeCardLayout(parts[1] || DEFAULT_CARD_LAYOUT),
+  };
+}
+
+function normalizeCardLayout(value) {
+  const layout = cleanSlug(value || DEFAULT_CARD_LAYOUT);
+  return CARD_LAYOUTS.includes(layout) ? layout : DEFAULT_CARD_LAYOUT;
+}
+
+function createCardUrls(origin, slug) {
+  const encoded = encodeURIComponent(slug);
+  return {
+    poster: `${origin}/card/${encoded}/poster`,
+    classic: `${origin}/card/${encoded}/classic`,
+    links: `${origin}/card/${encoded}/links`,
+  };
+}
+
+function normalizeCardButtons(buttons, fallback = {}) {
+  const source = Array.isArray(buttons) ? buttons : [];
+  const normalized = source.map((button) => ({
+    label: cleanText(button.label || button.l, 24),
+    url: normalizeActionUrl(button.url || button.u),
+    color: safeCssColor(button.color || button.c, "#06c755"),
+  })).filter((button) => button.label && button.url).slice(0, 6);
+  if (normalized.length) return normalized;
+
+  const defaults = [];
+  const phone = cleanText(fallback.phone, 60).replace(/[^0-9+]/g, "");
+  if (phone) defaults.push({ label: "行動電話", url: `tel:${phone}`, color: "#9b1c0c" });
+  if (fallback.address) {
+    defaults.push({
+      label: "店家地址",
+      url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fallback.address)}`,
+      color: "#1f2937",
+    });
+  }
+  if (fallback.website) defaults.push({ label: "開啟網站", url: normalizeUrl(fallback.website), color: "#06c755" });
+  return defaults.slice(0, 6);
+}
+
+function normalizeActionUrl(value) {
+  const url = cleanText(value, 500);
+  if (!url) return "";
+  if (/^(https?:|mailto:|tel:|line:)/i.test(url)) return url;
+  return `https://${url}`;
+}
+
+function safeCssColor(value, fallback) {
+  const color = cleanText(value, 24);
+  if (/^#[0-9a-f]{6}$/i.test(color)) return color;
+  return fallback;
 }
 
 function validateImageDataUrl(value) {
