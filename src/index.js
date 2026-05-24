@@ -198,7 +198,9 @@ function renderAppHtml(env, url) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SDKSYS Member</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -564,6 +566,53 @@ function renderAppHtml(env, url) {
       opacity: 0;
       pointer-events: none;
     }
+    .cropper-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: none;
+      flex-direction: column;
+      width: min(100%, 540px);
+      margin: 0 auto;
+      background: rgba(2, 6, 23, .94);
+    }
+    .cropper-modal.visible { display: flex; }
+    .cropper-stage {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      background: #020617;
+    }
+    .cropper-stage img {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .cropper-toolbar {
+      flex-shrink: 0;
+      display: grid;
+      gap: 10px;
+      padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+      background: #020617;
+    }
+    .cropper-tools {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .cropper-actions {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 10px;
+    }
+    .cropper-toolbar button {
+      min-height: 44px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .1);
+      color: #fff;
+      font-weight: 800;
+    }
+    .cropper-toolbar .confirm-crop { background: var(--accent); }
     .button-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1057,6 +1106,22 @@ function renderAppHtml(env, url) {
       <button class="nav-button" id="navSettings" type="button">●<br>設定</button>
     </nav>
   </main>
+  <div class="cropper-modal" id="cardCropperModal" aria-hidden="true">
+    <div class="cropper-stage">
+      <img id="cardCropperImage" alt="裁切名片照片">
+    </div>
+    <div class="cropper-toolbar">
+      <div class="cropper-tools">
+        <button id="cropZoomOutButton" type="button">縮小</button>
+        <button id="cropResetButton" type="button">重置</button>
+        <button id="cropZoomInButton" type="button">放大</button>
+      </div>
+      <div class="cropper-actions">
+        <button id="cropCancelButton" type="button">取消</button>
+        <button class="confirm-crop" id="cropConfirmButton" type="button">確認裁切</button>
+      </div>
+    </div>
+  </div>
   <script>
     const config = ${JSON.stringify({ storeCode, referralCode, liffId })};
     const statusEl = document.getElementById("status");
@@ -1077,6 +1142,9 @@ function renderAppHtml(env, url) {
     let activeCardLayout = "standard";
     let selectedCardImages = {};
     let selectedRecognizeFile = null;
+    let selectedRecognizeImageDataUrl = "";
+    let cardCropper = null;
+    let lastCardUploadImage = "";
     let cardButtons = [];
 
     function setStatus(text) {
@@ -1477,9 +1545,9 @@ function renderAppHtml(env, url) {
       }
     }
 
-    async function recognizeSelectedCard() {
+    async function recognizeImageDataUrl(imageDataUrl) {
       const file = selectedRecognizeFile || document.getElementById("cardImageFile").files[0];
-      let imageDataUrl = selectedCardImages[activeCardLayout];
+      imageDataUrl = imageDataUrl || selectedRecognizeImageDataUrl || selectedCardImages[activeCardLayout];
       if (!imageDataUrl && file) {
         imageDataUrl = await compressCardImage(file, 1600);
       }
@@ -1506,13 +1574,19 @@ function renderAppHtml(env, url) {
       selectedCardImages[activeCardLayout] = imageDataUrl;
       currentCard = currentCard || {};
       currentCard.layouts = { ...(currentCard.layouts || {}) };
+      selectedRecognizeImageDataUrl = imageDataUrl;
       currentCard.layouts[activeCardLayout] = {
         ...getEffectiveLayoutCard(currentCard, activeCardLayout),
         ...(result.card || {}),
         imageUrl: getEffectiveLayoutCard(currentCard, activeCardLayout).imageUrl,
       };
       fillCardForm(currentCard, activeCardLayout);
+      showCardEditorTab("contact");
       setStatus("辨識完成，請確認資料後儲存。");
+    }
+
+    async function recognizeSelectedCard() {
+      await recognizeImageDataUrl(selectedRecognizeImageDataUrl || selectedCardImages[activeCardLayout]);
     }
 
     async function saveBusinessCard(options = {}) {
@@ -1541,6 +1615,7 @@ function renderAppHtml(env, url) {
       currentCard = result.card;
       selectedCardImages = {};
       selectedRecognizeFile = null;
+      selectedRecognizeImageDataUrl = "";
       document.getElementById("cardImageFile").value = "";
       document.getElementById("cardCameraFile").value = "";
       document.getElementById("cardAlbumFile").value = "";
@@ -1725,11 +1800,135 @@ function renderAppHtml(env, url) {
       }
     }
 
-    function setRecognizeFile(file) {
-      selectedRecognizeFile = file || null;
-      if (selectedRecognizeFile) {
-        setStatus("圖片已選擇，可按 AI 辨識抽取名片資料。");
+    function createSafeCropper(imgElement, ratio) {
+      const parent = imgElement.parentElement;
+      if (parent) {
+        parent.style.display = "block";
+        parent.style.width = "100%";
+        parent.style.height = "100%";
+        parent.style.position = "relative";
       }
+      const freeRatio = ratio === null || ratio === undefined || Number.isNaN(Number(ratio));
+      return new Cropper(imgElement, {
+        aspectRatio: freeRatio ? NaN : ratio,
+        viewMode: 1,
+        dragMode: "move",
+        autoCropArea: 0.92,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        toggleDragModeOnDblclick: true,
+        zoomable: true,
+        zoomOnTouch: true,
+        zoomOnWheel: true,
+        wheelZoomRatio: 0.08,
+        movable: true,
+        scalable: true,
+        responsive: true,
+        restore: false,
+        guides: true,
+        center: true,
+        highlight: false,
+        background: false,
+      });
+    }
+
+    function closeCardCropper() {
+      const modal = document.getElementById("cardCropperModal");
+      modal.classList.remove("visible");
+      modal.setAttribute("aria-hidden", "true");
+      if (cardCropper) {
+        cardCropper.destroy();
+        cardCropper = null;
+      }
+      document.getElementById("cardCropperImage").src = "";
+    }
+
+    function zoomCardCropper(delta) {
+      if (!cardCropper) return;
+      try { cardCropper.zoom(Number(delta) || 0); } catch (error) {}
+    }
+
+    function resetCardCropper() {
+      if (!cardCropper) return;
+      try { cardCropper.reset(); } catch (error) {}
+    }
+
+    async function openCardCropperFromFile(file, input) {
+      selectedRecognizeFile = file || null;
+      selectedRecognizeImageDataUrl = "";
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        lastCardUploadImage = event.target.result || "";
+        if (!lastCardUploadImage) return;
+        if (!window.Cropper) {
+          selectedRecognizeImageDataUrl = await compressCardImage(file, 1600);
+          selectedCardImages[activeCardLayout] = selectedRecognizeImageDataUrl;
+          renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: selectedRecognizeImageDataUrl });
+          await recognizeImageDataUrl(selectedRecognizeImageDataUrl);
+          if (input) input.value = "";
+          return;
+        }
+        const modal = document.getElementById("cardCropperModal");
+        const img = document.getElementById("cardCropperImage");
+        modal.classList.add("visible");
+        modal.setAttribute("aria-hidden", "false");
+        img.onload = () => {
+          if (cardCropper) cardCropper.destroy();
+          setTimeout(() => {
+            try {
+              cardCropper = createSafeCropper(img, NaN);
+              setStatus("請裁切名片範圍，確認後會自動 AI 辨識。");
+            } catch (error) {
+              cardCropper = null;
+              setStatus("裁切器載入失敗，可按確認直接辨識原圖。");
+            }
+          }, 120);
+        };
+        img.src = lastCardUploadImage;
+        if (input) input.value = "";
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function confirmCardCrop() {
+      const button = document.getElementById("cropConfirmButton");
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = "處理中...";
+      let imageDataUrl = lastCardUploadImage;
+      try {
+        if (cardCropper) {
+          let quality = 0.82;
+          imageDataUrl = cardCropper.getCroppedCanvas({
+            maxWidth: 1200,
+            maxHeight: 1200,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: "high",
+          }).toDataURL("image/jpeg", quality);
+          while (imageDataUrl.length > 900000 && quality > 0.35) {
+            quality -= 0.14;
+            imageDataUrl = cardCropper.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 }).toDataURL("image/jpeg", quality);
+          }
+        }
+        if (!imageDataUrl) {
+          setStatus("找不到可辨識的圖片，請重新選擇照片。");
+          return;
+        }
+        selectedRecognizeImageDataUrl = imageDataUrl;
+        selectedCardImages[activeCardLayout] = imageDataUrl;
+        closeCardCropper();
+        renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: imageDataUrl });
+        await recognizeImageDataUrl(imageDataUrl);
+      } finally {
+        button.disabled = false;
+        button.textContent = original || "確認裁切";
+      }
+    }
+
+    function setRecognizeFile(file, input) {
+      if (!file) return;
+      openCardCropperFromFile(file, input);
     }
 
     function showView(name) {
@@ -1870,13 +2069,16 @@ function renderAppHtml(env, url) {
     document.getElementById("shareCardButton").addEventListener("click", shareBusinessCard);
     document.getElementById("captureCardButton").addEventListener("click", () => document.getElementById("cardCameraFile").click());
     document.getElementById("uploadCardPhotoButton").addEventListener("click", () => document.getElementById("cardAlbumFile").click());
-    document.getElementById("cardCameraFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0]));
-    document.getElementById("cardAlbumFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0]));
+    document.getElementById("cardCameraFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target));
+    document.getElementById("cardAlbumFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target));
+    document.getElementById("cropCancelButton").addEventListener("click", closeCardCropper);
+    document.getElementById("cropConfirmButton").addEventListener("click", confirmCardCrop);
+    document.getElementById("cropZoomOutButton").addEventListener("click", () => zoomCardCropper(-0.12));
+    document.getElementById("cropZoomInButton").addEventListener("click", () => zoomCardCropper(0.12));
+    document.getElementById("cropResetButton").addEventListener("click", resetCardCropper);
     document.getElementById("uploadEcardImageButton").addEventListener("click", () => document.getElementById("ecardCoverFile").click());
     document.getElementById("ecardCoverFile").addEventListener("change", uploadEcardImage);
-    document.getElementById("cardImageFile").addEventListener("change", () => {
-      setStatus("圖片已選擇，可按 AI 辨識抽取名片資料。");
-    });
+    document.getElementById("cardImageFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target));
     document.querySelectorAll('input[name="ecard-layout"]').forEach((input) => {
       input.addEventListener("change", (event) => {
         saveCurrentLayoutDraft();
