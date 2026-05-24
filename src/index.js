@@ -929,6 +929,14 @@ function renderAppHtml(env, url) {
       color: var(--muted);
       line-height: 1.45;
     }
+    .card-preview-links {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+      color: var(--ink);
+      line-height: 1.45;
+      word-break: break-word;
+    }
     .card-list-header {
       display: grid;
       gap: 12px;
@@ -1107,6 +1115,8 @@ function renderAppHtml(env, url) {
             <div class="card-preview-body">
               <div class="card-preview-title" id="libraryPreviewTitle"></div>
               <div class="card-preview-meta" id="libraryPreviewMeta"></div>
+              <div class="card-preview-meta" id="libraryPreviewIntro"></div>
+              <div class="card-preview-links" id="libraryPreviewLinks"></div>
             </div>
           </div>
           <div class="url-grid">
@@ -1814,10 +1824,26 @@ function renderAppHtml(env, url) {
       document.getElementById("libraryAddress").value = card?.address || "";
       document.getElementById("libraryIntro").value = card?.intro || "";
       document.getElementById("libraryPublicUrl").value = card?.publicUrl || "";
+      const preview = document.getElementById("libraryPreview");
       document.getElementById("libraryPreviewImage").src = card?.imageUrl || "";
       document.getElementById("libraryPreviewImage").style.display = card?.imageUrl ? "block" : "none";
       document.getElementById("libraryPreviewTitle").textContent = libraryCardTitle(card);
       document.getElementById("libraryPreviewMeta").textContent = [card?.company, card?.title].filter(Boolean).join(" / ");
+      document.getElementById("libraryPreviewIntro").textContent = card?.intro || "";
+      const links = document.getElementById("libraryPreviewLinks");
+      links.innerHTML = "";
+      [
+        ["電話", card?.phone],
+        ["Email", card?.email],
+        ["網站", card?.website],
+        ["地址", card?.address],
+      ].forEach(([label, value]) => {
+        if (!value) return;
+        const row = document.createElement("div");
+        row.textContent = label + "：" + value;
+        links.appendChild(row);
+      });
+      preview.classList.toggle("visible", Boolean(card));
     }
 
     function getLibraryFormData() {
@@ -2406,7 +2432,7 @@ function renderAppHtml(env, url) {
 
     function showCardEditorTab(tab) {
       const target = ["contact", "content", "ecard"].includes(tab) ? tab : "ecard";
-      document.querySelectorAll(".card-tab").forEach((button) => {
+      document.querySelectorAll("[data-card-tab]").forEach((button) => {
         button.classList.toggle("active", button.dataset.cardTab === target);
       });
       document.getElementById("cardTabContact").classList.toggle("active", target === "contact");
@@ -2442,7 +2468,7 @@ function renderAppHtml(env, url) {
     document.getElementById("navHome").addEventListener("click", () => showView("home"));
     document.getElementById("navSettings").addEventListener("click", () => showView("settings"));
     document.getElementById("refreshLoginButton").addEventListener("click", restartLineLogin);
-    document.querySelectorAll(".card-tab").forEach((button) => {
+    document.querySelectorAll("[data-card-tab]").forEach((button) => {
       button.addEventListener("click", () => showCardEditorTab(button.dataset.cardTab));
     });
 
