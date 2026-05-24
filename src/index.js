@@ -482,6 +482,7 @@ function renderAppHtml(env, url) {
     const memberEl = document.getElementById("member");
     const cardSdkEl = document.getElementById("cardSdk");
     let currentIdToken = "";
+    let currentSessionToken = "";
     let currentMember = null;
     let currentCard = null;
     let selectedCardImage = "";
@@ -527,9 +528,17 @@ function renderAppHtml(env, url) {
       });
       const result = await response.json();
       if (!result.ok) {
+        if (shouldRefreshLineLogin(result)) {
+          await restartLineLogin();
+          return;
+        }
         setStatus(result.message || result.error || "登入失敗");
         return;
       }
+      currentSessionToken = result.sessionToken || "";
+      try {
+        sessionStorage.setItem("SDKSYS_SESSION_" + config.storeCode, currentSessionToken);
+      } catch (error) {}
       document.getElementById("memberNo").textContent = result.member.memberNo;
       document.getElementById("myReferralCode").textContent = result.member.referralCode;
       document.getElementById("attribution").textContent = result.attribution.result || result.attribution.status;
@@ -543,6 +552,20 @@ function renderAppHtml(env, url) {
       cardSdkEl.classList.add("visible");
       await loadMyCard();
       setStatus("登入完成");
+    }
+
+    function shouldRefreshLineLogin(result) {
+      const text = String((result && (result.message || result.error)) || "").toLowerCase();
+      return text.includes("expired") || text.includes("idtoken") || text.includes("line_verify_failed");
+    }
+
+    async function restartLineLogin() {
+      setStatus("LINE 登入已過期，正在重新登入...");
+      try { sessionStorage.removeItem("SDKSYS_SESSION_" + config.storeCode); } catch (error) {}
+      try {
+        if (window.liff && liff.isLoggedIn()) liff.logout();
+      } catch (error) {}
+      liff.login({ redirectUri: location.href });
     }
 
     function readFileAsDataUrl(file) {
@@ -623,11 +646,11 @@ function renderAppHtml(env, url) {
     }
 
     async function loadMyCard() {
-      if (!currentIdToken) return;
+      if (!currentSessionToken) return;
       const response = await fetch("/api/cards/me", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idToken: currentIdToken, storeCode: config.storeCode }),
+        body: JSON.stringify({ sessionToken: currentSessionToken, storeCode: config.storeCode }),
       });
       const result = await response.json();
       if (result.ok && result.card) {
@@ -650,6 +673,7 @@ function renderAppHtml(env, url) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           idToken: currentIdToken,
+          sessionToken: currentSessionToken,
           storeCode: config.storeCode,
           imageDataUrl: selectedCardImage,
         }),
@@ -665,7 +689,7 @@ function renderAppHtml(env, url) {
     }
 
     async function saveBusinessCard() {
-      if (!currentIdToken) return;
+      if (!currentSessionToken) return;
       const card = { ...(currentCard || {}), ...getCardFormData() };
       setStatus("正在儲存名片...");
       const response = await fetch("/api/cards/upsert", {
@@ -673,6 +697,7 @@ function renderAppHtml(env, url) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           idToken: currentIdToken,
+          sessionToken: currentSessionToken,
           storeCode: config.storeCode,
           card,
           imageDataUrl: selectedCardImage || undefined,
@@ -835,10 +860,35 @@ async function handleLineLogin({ env, storage, payload }) {
     member: publicMember(member),
     attribution,
     downlines,
+    sessionToken: await createSessionToken(env, {
+      tenantId: tenant.tenantId,
+      tenantMemberId,
+      userId,
+    }),
+    sessionExpiresAt: new Date(Date.now() + sessionMaxAgeMs()).toISOString(),
   };
 }
 
 async function getSessionContext({ env, storage, payload }) {
+  if (payload.sessionToken) {
+    const session = await verifySessionToken(env, payload.sessionToken);
+    const tenant = (await storage.getJson(`tenants/${session.tenantId}.json`)).value;
+    if (!tenant || tenant.status !== "active") {
+      throw httpError(404, "Tenant not found or inactive", "tenant_not_found");
+    }
+    const member = (await storage.getJson(`tenant-members/${session.tenantId}/${session.tenantMemberId}.json`)).value;
+    if (!member || member.status !== "active" || member.userId !== session.userId) {
+      throw httpError(401, "Session member is not active", "session_member_invalid");
+    }
+    return {
+      lineProfile: { sub: session.userId, name: "" },
+      tenant,
+      userId: session.userId,
+      tenantMemberId: session.tenantMemberId,
+      member,
+    };
+  }
+
   assertString(payload.idToken, "idToken");
   const lineProfile = await verifyLineIdToken(env, payload.idToken);
   const tenant = await resolveTenant(storage, payload);
@@ -1481,6 +1531,68 @@ async function createTenantMemberId(tenantId, userId, secret) {
 async function createReferralCode(tenantId, tenantMemberId, secret) {
   const digest = await hmacHex(await importHmacKey(secret), `ref:${tenantId}:${tenantMemberId}`);
   return `R${base36FromHex(digest).slice(0, 7).toUpperCase()}`;
+}
+
+function sessionMaxAgeMs() {
+  return 30 * 24 * 60 * 60 * 1000;
+}
+
+async function createSessionToken(env, session) {
+  assertSecret(env.MEMBER_NO_SECRET, "MEMBER_NO_SECRET");
+  const payload = {
+    v: 1,
+    tenantId: session.tenantId,
+    tenantMemberId: session.tenantMemberId,
+    userId: session.userId,
+    iat: Date.now(),
+    exp: Date.now() + sessionMaxAgeMs(),
+  };
+  const encoded = base64UrlEncode(JSON.stringify(payload));
+  const signature = await hmacHex(await importHmacKey(env.MEMBER_NO_SECRET), `session:${encoded}`);
+  return `${encoded}.${signature}`;
+}
+
+async function verifySessionToken(env, token) {
+  assertSecret(env.MEMBER_NO_SECRET, "MEMBER_NO_SECRET");
+  const [encoded, signature] = String(token || "").split(".");
+  if (!encoded || !signature) {
+    throw httpError(401, "Session token is required", "session_required");
+  }
+  const expected = await hmacHex(await importHmacKey(env.MEMBER_NO_SECRET), `session:${encoded}`);
+  if (!timingSafeEqual(signature, expected)) {
+    throw httpError(401, "Session token is invalid", "session_invalid");
+  }
+  let payload = null;
+  try {
+    payload = JSON.parse(base64UrlDecode(encoded));
+  } catch {
+    throw httpError(401, "Session token is invalid", "session_invalid");
+  }
+  if (!payload || Number(payload.exp || 0) < Date.now()) {
+    throw httpError(401, "Session token expired", "session_expired");
+  }
+  if (!payload.tenantId || !payload.tenantMemberId || !payload.userId) {
+    throw httpError(401, "Session token is incomplete", "session_invalid");
+  }
+  return payload;
+}
+
+function base64UrlEncode(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value) {
+  const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 async function createMemberNo({ storeCode, tenantId, userId, secret }) {
