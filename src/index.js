@@ -305,10 +305,10 @@ function renderAppHtml(env, url) {
       width: 64px;
       height: 64px;
       border: 1px solid #d8e0e8;
-      background:
-        linear-gradient(90deg, #111 6px, transparent 6px) 0 0/12px 12px,
-        linear-gradient(#111 6px, transparent 6px) 0 0/12px 12px,
-        #fff;
+      display: block;
+      object-fit: contain;
+      padding: 3px;
+      background: #fff;
     }
     .share-mini {
       min-height: 34px;
@@ -876,7 +876,7 @@ function renderAppHtml(env, url) {
         </div>
         <div class="qr-card">
           <div style="font-size:12px;font-weight:800;color:#64748b;">專屬 QR</div>
-          <div class="qr-box" aria-hidden="true"></div>
+          <img class="qr-box" id="referralQr" alt="專屬 QR" src="">
           <button class="share-mini" id="homeShareReferral" type="button">分享↗</button>
         </div>
       </div>
@@ -1083,6 +1083,54 @@ function renderAppHtml(env, url) {
       statusEl.textContent = text;
     }
 
+    function avatarPlaceholder(name) {
+      const initial = String(name || "會員").trim().slice(0, 1).toUpperCase() || "會";
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108"><rect width="108" height="108" rx="54" fill="#dbeafe"/><text x="54" y="65" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="800" fill="#2563eb">' + initial.replace(/[<>&]/g, "") + '</text></svg>';
+      return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+    }
+
+    function renderProfileAvatar(member) {
+      const avatar = document.getElementById("profileAvatar");
+      const name = member?.profile?.name || member?.displayName || member?.memberNo || "會員";
+      const fallback = avatarPlaceholder(name);
+      avatar.alt = name;
+      avatar.onerror = () => {
+        avatar.onerror = null;
+        avatar.src = fallback;
+      };
+      avatar.src = member?.pictureUrl || fallback;
+    }
+
+    function buildReferralLink(referralCode) {
+      const referralLink = new URL("/app", location.origin);
+      referralLink.searchParams.set("storeCode", config.storeCode);
+      referralLink.searchParams.set("ref", referralCode);
+      return referralLink;
+    }
+
+    function renderReferralQr(url) {
+      const qr = document.getElementById("referralQr");
+      if (!url) {
+        qr.removeAttribute("src");
+        return;
+      }
+      qr.src = "https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=0&data=" + encodeURIComponent(url);
+    }
+
+    async function getClientLineProfile() {
+      try {
+        if (!window.liff || !liff.isLoggedIn()) return null;
+        const profile = await liff.getProfile();
+        return {
+          userId: profile.userId || "",
+          displayName: profile.displayName || "",
+          pictureUrl: profile.pictureUrl || "",
+        };
+      } catch (error) {
+        return null;
+      }
+    }
+
     async function boot() {
       if (!config.liffId) {
         loginButton.disabled = true;
@@ -1110,6 +1158,7 @@ function renderAppHtml(env, url) {
       }
       currentIdToken = idToken;
       setStatus("正在建立會員身份...");
+      const clientLineProfile = await getClientLineProfile();
       const response = await fetch("/api/auth/line-login", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1117,6 +1166,7 @@ function renderAppHtml(env, url) {
           idToken,
           storeCode: config.storeCode,
           referralCode: config.referralCode || undefined,
+          lineProfile: clientLineProfile || undefined,
         }),
       });
       const result = await response.json();
@@ -1136,12 +1186,12 @@ function renderAppHtml(env, url) {
       document.getElementById("myReferralCode").textContent = result.member.referralCode;
       document.getElementById("attribution").textContent = result.attribution.result || result.attribution.status;
       fillProfileForm(result.member.profile || {});
-      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.memberNo || "會員";
+      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.displayName || result.member.memberNo || "會員";
       document.getElementById("homeRole").textContent = result.member.role === "admin" ? "總管" : "會員";
-      const referralLink = new URL(location.href);
-      referralLink.searchParams.set("storeCode", config.storeCode);
-      referralLink.searchParams.set("ref", result.member.referralCode);
+      renderProfileAvatar(result.member);
+      const referralLink = buildReferralLink(result.member.referralCode);
       document.getElementById("referralLink").value = referralLink.toString();
+      renderReferralQr(referralLink.toString());
       renderDownlines(result.downlines || []);
       currentMember = result.member;
       await loadMyCard();
@@ -1758,7 +1808,8 @@ function renderAppHtml(env, url) {
       }
       currentMember = result.member;
       fillProfileForm(result.member.profile || {});
-      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.memberNo || "會員";
+      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.displayName || result.member.memberNo || "會員";
+      renderProfileAvatar(result.member);
       setStatus("會員資料已儲存");
     }
 
@@ -1852,6 +1903,7 @@ function renderAppHtml(env, url) {
 async function handleLineLogin({ env, storage, payload }) {
   assertString(payload.idToken, "idToken");
   const lineProfile = await verifyLineIdToken(env, payload.idToken);
+  const clientLineProfile = normalizeClientLineProfile(payload.lineProfile, lineProfile.sub);
   const tenant = await resolveTenant(storage, payload);
   const now = new Date().toISOString();
   const userId = await createUserId(lineProfile.sub, env.MEMBER_NO_SECRET);
@@ -1871,8 +1923,8 @@ async function handleLineLogin({ env, storage, payload }) {
   const user = {
     userId,
     lineUserId: lineProfile.sub,
-    displayName: lineProfile.name || lineProfile.displayName || null,
-    pictureUrl: lineProfile.picture || null,
+    displayName: lineProfile.name || lineProfile.displayName || clientLineProfile.displayName || existingMember?.displayName || null,
+    pictureUrl: lineProfile.picture || clientLineProfile.pictureUrl || existingMember?.pictureUrl || null,
     email: lineProfile.email || null,
     updatedAt: now,
     createdAt: existingMember?.createdAt || now,
@@ -1886,6 +1938,8 @@ async function handleLineLogin({ env, storage, payload }) {
     role: existingMember?.role || "member",
     status: existingMember?.status || "active",
     referralCode,
+    displayName: user.displayName,
+    pictureUrl: user.pictureUrl,
     profile: normalizeMemberProfile(existingMember?.profile || {}),
     joinedByReferralCode: existingMember?.joinedByReferralCode || payload.referralCode || null,
     lastActiveAt: now,
@@ -2855,6 +2909,25 @@ async function verifyLineIdToken(env, idToken) {
   return result;
 }
 
+function normalizeClientLineProfile(profile, verifiedLineUserId) {
+  if (!profile || profile.userId !== verifiedLineUserId) return {};
+  return {
+    displayName: cleanText(profile.displayName, 120),
+    pictureUrl: cleanHttpsUrl(profile.pictureUrl),
+  };
+}
+
+function cleanHttpsUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch (error) {
+    return null;
+  }
+}
+
 function createWasabiClient(env) {
   assertSecret(env.WASABI_ACCESS_KEY_ID, "WASABI_ACCESS_KEY_ID");
   assertSecret(env.WASABI_SECRET_ACCESS_KEY, "WASABI_SECRET_ACCESS_KEY");
@@ -3133,6 +3206,8 @@ function publicMember(member) {
     role: member.role,
     status: member.status,
     referralCode: member.referralCode,
+    displayName: member.displayName || null,
+    pictureUrl: member.pictureUrl || null,
     profile: normalizeMemberProfile(member.profile || {}),
     lastActiveAt: member.lastActiveAt,
   };
