@@ -703,6 +703,12 @@ function renderAppHtml(env, url) {
               <div class="card-preview-meta" id="cardPreviewMeta"></div>
             </div>
           </div>
+          <div class="url-grid">
+            <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
+            <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
+            <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
+            <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
+          </div>
           <div class="detail-editor" id="detailEditor">
             <div class="form-grid">
               <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
@@ -731,12 +737,6 @@ function renderAppHtml(env, url) {
             </div>
           </div>
           <button class="save-config-button" id="saveEcardConfigButton" type="button">▣ 儲存名片設定</button>
-          <div class="url-grid">
-            <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
-            <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
-            <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
-            <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
-          </div>
         </div>
       </aside>
     </div>
