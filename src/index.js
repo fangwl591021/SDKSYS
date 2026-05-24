@@ -1700,7 +1700,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .share-head { min-height:52px; display:flex; justify-content:flex-end; align-items:center; padding:10px 12px; }
     .share-badge { appearance:none; border:0; display:inline-flex; flex:0 0 auto; width:auto; max-width:max-content; align-items:center; justify-content:center; min-height:32px; border-radius:999px; padding:6px 16px; color:white; font:inherit; font-weight:900; line-height:1.2; white-space:nowrap; text-decoration:none; background:${escapeHtml(shareColor)}; cursor:pointer; }
     .hero { background:#f8fbff; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-    .hero img, .hero video { width:100%; height:100%; object-fit:cover; display:block; }
+    .hero img, .hero video { width:100%; height:auto; display:block; }
     .visual-empty { width:120px; height:120px; border-radius:8px; background:#06c755; color:white; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:900; }
     h1 { margin:0; letter-spacing:0; line-height:1.08; }
     .meta { color:#364756; line-height:1.45; }
@@ -1710,8 +1710,8 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .actions { display:grid; gap:10px; }
     .actions a { display:block; text-decoration:none; text-align:center; padding:13px 16px; border-radius:8px; font-weight:900; color:white; }
     .layout-standard main { width:min(430px, calc(100% - 24px)); }
-    .layout-standard .hero { aspect-ratio:800/533; }
-    .layout-standard .hero img, .layout-standard .hero video { object-fit:contain; background:#fff; }
+    .layout-standard .hero { aspect-ratio:800/533; background:#fff; }
+    .layout-standard .hero img, .layout-standard .hero video { height:100%; object-fit:cover; background:#fff; }
     .layout-standard .body { padding:24px 26px 12px; text-align:center; }
     .layout-standard h1 { font-size:30px; margin-bottom:12px; }
     .layout-standard .intro { margin:14px 0 0; text-align:left; }
@@ -1725,13 +1725,13 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .layout-full .meta { font-size:18px; }
     .layout-full .intro { margin-top:18px; color:#607080; }
     .layout-full .hero { min-height:340px; padding:18px; }
-    .layout-full .hero img, .layout-full .hero video { object-fit:contain; border-radius:6px; box-shadow:0 10px 28px rgba(25,42,61,.10); }
+    .layout-full .hero img, .layout-full .hero video { max-height:520px; object-fit:contain; border-radius:6px; box-shadow:0 10px 28px rgba(25,42,61,.10); }
     .layout-full .actions { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:16px; }
     .layout-square main { width:min(520px, calc(100% - 24px)); }
     .layout-square .card-shell { padding-bottom:22px; }
     .layout-square .square-frame { width:100%; aspect-ratio:1/1; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
     .layout-square .hero { min-height:0; }
-    .layout-square .hero img, .layout-square .hero video { object-fit:cover; }
+    .layout-square .hero img, .layout-square .hero video { height:100%; object-fit:cover; }
     .layout-square .profile { padding:18px 26px; text-align:center; }
     .layout-square h1 { font-size:28px; margin-bottom:8px; }
     .layout-square .intro { margin-top:10px; color:#607080; }
