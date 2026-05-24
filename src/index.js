@@ -714,16 +714,77 @@ function renderAppHtml(env, url) {
       setStatus("名片已儲存");
     }
 
+    function flexText(value, fallback, limit = 120) {
+      const text = String(value || fallback || " ").replace(/\\s+/g, " ").trim();
+      return (text || " ").slice(0, limit);
+    }
+
+    function buildCardFlexMessage(card, url) {
+      card = card || {};
+      const name = flexText(card.name, "我的名片", 80);
+      const meta = [card.company, card.title].filter(Boolean).join(" / ");
+      const intro = flexText(card.intro || meta || url, "點擊查看完整名片", 180);
+      const website = card.website && /^https?:\\/\\//i.test(card.website) ? card.website : "";
+      const phone = card.phone ? String(card.phone).replace(/[^0-9+]/g, "") : "";
+      const buttons = [
+        { label: "查看名片", uri: url, color: "#06C755" },
+        phone ? { label: "撥打電話", uri: "tel:" + phone, color: "#233142" } : null,
+        website ? { label: "開啟網站", uri: website, color: "#3b82f6" } : null,
+      ].filter(Boolean).slice(0, 3);
+      const bubble = {
+        type: "bubble",
+        size: "mega",
+        body: {
+          type: "box",
+          layout: "vertical",
+          spacing: "md",
+          contents: [
+            { type: "text", text: name, weight: "bold", size: "xl", wrap: true, color: "#1f2933" },
+            { type: "text", text: flexText(meta, "SDK 名片王", 100), size: "sm", color: "#607080", wrap: true },
+            { type: "separator", margin: "md" },
+            { type: "text", text: intro, size: "sm", color: "#364756", wrap: true, margin: "md" },
+          ],
+          action: { type: "uri", uri: url },
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: buttons.map((button) => ({
+            type: "button",
+            style: "primary",
+            height: "sm",
+            color: button.color,
+            action: { type: "uri", label: button.label, uri: button.uri },
+          })),
+        },
+      };
+      if (card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
+        bubble.hero = {
+          type: "image",
+          url: card.imageUrl,
+          size: "full",
+          aspectRatio: "20:13",
+          aspectMode: "cover",
+          action: { type: "uri", uri: url },
+        };
+      }
+      return {
+        type: "flex",
+        altText: name + " 的名片",
+        contents: bubble,
+      };
+    }
+
     async function shareBusinessCard() {
       const url = document.getElementById("publicCardUrl").value;
       if (!url) {
         setStatus("請先儲存名片");
         return;
       }
-      const text = (currentCard?.name ? currentCard.name + " 的名片\\n" : "我的名片\\n") + url;
       try {
         if (window.liff && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
-          await liff.shareTargetPicker([{ type: "text", text }]);
+          await liff.shareTargetPicker([buildCardFlexMessage(currentCard, url)]);
           setStatus("已開啟 LINE 分享");
           return;
         }
