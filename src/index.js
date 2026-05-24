@@ -96,6 +96,12 @@ export default {
         return json(result);
       }
 
+      if (url.pathname === "/api/member/profile/upsert" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        return json(await upsertMemberProfile({ env, storage, payload }));
+      }
+
       if (url.pathname === "/api/cards/me" && request.method === "POST") {
         const payload = await readJson(request);
         const storage = createWasabiClient(env);
@@ -859,7 +865,7 @@ function renderAppHtml(env, url) {
         <button class="invite-button" id="copyReferralLink" type="button">⌯ 產生我的專屬邀約連結</button>
         <div class="setting-list">
           <button class="setting-item" id="openCardSettingsButton" type="button"><span>♟ 我的專屬名片設定</span><span>⌄</span></button>
-          <button class="setting-item" type="button"><span>● 會員註冊 / 資料維護</span><span>⌄</span></button>
+          <button class="setting-item" id="openProfileSettingsButton" type="button"><span>● 會員註冊 / 資料維護</span><span>⌄</span></button>
           <button class="setting-item" type="button"><span>● 本機 GPT API Key</span><span>⌄</span></button>
           <button class="setting-item" type="button"><span>● 個人 AI 助理核心</span><span>⌄</span></button>
           <button class="setting-item" type="button"><span>⌯ 個人社群連結</span><span>⌄</span></button>
@@ -876,6 +882,22 @@ function renderAppHtml(env, url) {
         </div>
         <div class="row"><span>直接下線</span><strong id="downlineCount">0</strong></div>
         <div class="downlines" id="downlines"></div>
+      </div>
+
+      <div class="card-sdk" id="profileSdk">
+          <button class="secondary-button" id="backFromProfileButton" type="button" style="margin-bottom:14px;">← 回設定</button>
+          <h2>會員註冊資料</h2>
+          <p>這裡是個人會員資料，和名片上的聯絡資料分開保存。</p>
+          <div class="detail-editor">
+            <div class="form-grid">
+              <div class="field"><label for="profileName">姓名</label><input id="profileName" autocomplete="name"></div>
+              <div class="field"><label for="profileBirthday">生日</label><input id="profileBirthday" type="date"></div>
+              <div class="field"><label for="profilePhone">電話</label><input id="profilePhone" autocomplete="tel"></div>
+              <div class="field"><label for="profileResidence">居住地</label><input id="profileResidence"></div>
+              <div class="field"><label for="profileIndustry">行業別</label><input id="profileIndustry"></div>
+            </div>
+          </div>
+          <button class="save-config-button" id="saveProfileButton" type="button">▣ 儲存會員資料</button>
       </div>
 
       <div class="card-sdk" id="cardSdk">
@@ -992,6 +1014,7 @@ function renderAppHtml(env, url) {
     const loginButton = document.getElementById("loginButton");
     const memberEl = document.getElementById("member");
     const cardSdkEl = document.getElementById("cardSdk");
+    const profileSdkEl = document.getElementById("profileSdk");
     const homeView = document.getElementById("homeView");
     const settingsView = document.getElementById("settingsView");
     const settingsList = document.getElementById("settingsList");
@@ -1062,7 +1085,8 @@ function renderAppHtml(env, url) {
       document.getElementById("memberNo").textContent = result.member.memberNo;
       document.getElementById("myReferralCode").textContent = result.member.referralCode;
       document.getElementById("attribution").textContent = result.attribution.result || result.attribution.status;
-      document.getElementById("homeName").textContent = result.member.memberNo || "會員";
+      fillProfileForm(result.member.profile || {});
+      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.memberNo || "會員";
       document.getElementById("homeRole").textContent = result.member.role === "admin" ? "總管" : "會員";
       const referralLink = new URL(location.href);
       referralLink.searchParams.set("storeCode", config.storeCode);
@@ -1227,7 +1251,7 @@ function renderAppHtml(env, url) {
       document.getElementById("cardWebsite").value = view.website || "";
       document.getElementById("cardAddress").value = view.address || "";
       document.getElementById("cardIntro").value = view.intro || "";
-      if (view.name) document.getElementById("homeName").textContent = view.name;
+      if (view.name && !currentMember?.profile?.name) document.getElementById("homeName").textContent = view.name;
       document.getElementById("cardShareLabel").value = cleanShareLabelInput(view.shareLabel);
       document.getElementById("cardShareColor").value = view.shareColor || "#ef4444";
       document.getElementById("ecardImageUrl").value = view.imageUrl || "";
@@ -1612,6 +1636,7 @@ function renderAppHtml(env, url) {
       showView("settings");
       settingsList.style.display = "none";
       memberEl.classList.remove("visible");
+      profileSdkEl.classList.remove("visible");
       cardSdkEl.classList.add("visible");
       showCardEditorTab("ecard");
       setTimeout(() => cardSdkEl.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
@@ -1620,6 +1645,61 @@ function renderAppHtml(env, url) {
     function closeCardSettings() {
       settingsList.style.display = "";
       cardSdkEl.classList.remove("visible");
+      profileSdkEl.classList.remove("visible");
+    }
+
+    function openProfileSettings() {
+      showView("settings");
+      settingsList.style.display = "none";
+      memberEl.classList.remove("visible");
+      cardSdkEl.classList.remove("visible");
+      profileSdkEl.classList.add("visible");
+      setTimeout(() => profileSdkEl.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    }
+
+    function fillProfileForm(profile) {
+      profile = profile || {};
+      document.getElementById("profileName").value = profile.name || "";
+      document.getElementById("profileBirthday").value = profile.birthday || "";
+      document.getElementById("profilePhone").value = profile.phone || "";
+      document.getElementById("profileResidence").value = profile.residence || "";
+      document.getElementById("profileIndustry").value = profile.industry || "";
+    }
+
+    function getProfileFormData() {
+      return {
+        name: document.getElementById("profileName").value.trim(),
+        birthday: document.getElementById("profileBirthday").value.trim(),
+        phone: document.getElementById("profilePhone").value.trim(),
+        residence: document.getElementById("profileResidence").value.trim(),
+        industry: document.getElementById("profileIndustry").value.trim(),
+      };
+    }
+
+    async function saveMemberProfile() {
+      if (!currentSessionToken) {
+        setStatus("登入完成後才能儲存會員資料");
+        return;
+      }
+      setStatus("正在儲存會員資料...");
+      const response = await fetch("/api/member/profile/upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionToken: currentSessionToken,
+          storeCode: config.storeCode,
+          profile: getProfileFormData(),
+        }),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        setStatus(result.message || result.error || "會員資料儲存失敗");
+        return;
+      }
+      currentMember = result.member;
+      fillProfileForm(result.member.profile || {});
+      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.memberNo || "會員";
+      setStatus("會員資料已儲存");
     }
 
     function showCardEditorTab(tab) {
@@ -1651,9 +1731,12 @@ function renderAppHtml(env, url) {
     document.getElementById("copyReferralLink").addEventListener("click", copyReferralLinkToClipboard);
     document.getElementById("homeShareReferral").addEventListener("click", copyReferralLinkToClipboard);
     document.getElementById("openCardSettingsButton").addEventListener("click", openCardSettings);
+    document.getElementById("openProfileSettingsButton").addEventListener("click", openProfileSettings);
     document.getElementById("homeOpenCardButton").addEventListener("click", openCardSettings);
     document.getElementById("navCards").addEventListener("click", openCardSettings);
     document.getElementById("backToSettingsButton").addEventListener("click", closeCardSettings);
+    document.getElementById("backFromProfileButton").addEventListener("click", closeCardSettings);
+    document.getElementById("saveProfileButton").addEventListener("click", saveMemberProfile);
     document.getElementById("navHome").addEventListener("click", () => showView("home"));
     document.getElementById("navSettings").addEventListener("click", () => showView("settings"));
     document.getElementById("refreshLoginButton").addEventListener("click", restartLineLogin);
@@ -1739,6 +1822,7 @@ async function handleLineLogin({ env, storage, payload }) {
     role: existingMember?.role || "member",
     status: existingMember?.status || "active",
     referralCode,
+    profile: normalizeMemberProfile(existingMember?.profile || {}),
     joinedByReferralCode: existingMember?.joinedByReferralCode || payload.referralCode || null,
     lastActiveAt: now,
     createdAt: existingMember?.createdAt || now,
@@ -1812,6 +1896,30 @@ async function getSessionContext({ env, storage, payload }) {
     throw httpError(401, "Login is required before card operations", "login_required");
   }
   return { lineProfile, tenant, userId, tenantMemberId, member };
+}
+
+async function upsertMemberProfile({ env, storage, payload }) {
+  const session = await getSessionContext({ env, storage, payload });
+  const now = new Date().toISOString();
+  const profile = normalizeMemberProfile(payload.profile || {});
+  const memberKey = `tenant-members/${session.tenant.tenantId}/${session.tenantMemberId}.json`;
+  const member = {
+    ...session.member,
+    profile,
+    updatedAt: now,
+  };
+  await storage.putJson(memberKey, member);
+
+  const user = (await storage.getJson(`users/${session.userId}.json`)).value || {};
+  await storage.putJson(`users/${session.userId}.json`, {
+    ...user,
+    displayName: profile.name || user.displayName || null,
+    phone: profile.phone || user.phone || null,
+    profile,
+    updatedAt: now,
+  });
+
+  return { ok: true, member: publicMember(member) };
 }
 
 async function getMyBusinessCard({ env, storage, payload, origin }) {
@@ -2961,8 +3069,25 @@ function publicMember(member) {
     role: member.role,
     status: member.status,
     referralCode: member.referralCode,
+    profile: normalizeMemberProfile(member.profile || {}),
     lastActiveAt: member.lastActiveAt,
   };
+}
+
+function normalizeMemberProfile(profile) {
+  profile = profile || {};
+  return {
+    name: cleanText(profile.name, 80),
+    birthday: normalizeBirthday(profile.birthday),
+    phone: cleanText(profile.phone, 60),
+    residence: cleanText(profile.residence, 120),
+    industry: cleanText(profile.industry, 120),
+  };
+}
+
+function normalizeBirthday(value) {
+  const text = cleanText(value, 20);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
 }
 
 function publicAttribution(assignment, result) {
