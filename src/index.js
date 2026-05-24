@@ -190,6 +190,8 @@ function renderAppHtml(env, url) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SDKSYS Member</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -455,50 +457,79 @@ function renderAppHtml(env, url) {
       color: #dc2626;
       border-color: #ffe0e5;
     }
-    .cropper {
+    .crop-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
       display: none;
-      gap: 10px;
-      margin-top: 12px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fbfdff;
+      align-items: stretch;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.72);
     }
-    .cropper.visible { display: grid; }
-    .crop-stage {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 800 / 533;
-      overflow: hidden;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+    .crop-modal.visible { display: flex; }
+    .crop-sheet {
+      width: min(100%, 520px);
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      background: #ffffff;
+    }
+    .crop-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .crop-head strong {
+      display: block;
+      color: var(--ink);
+      font-size: 16px;
+    }
+    .crop-head span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .crop-canvas-wrap {
+      min-height: 0;
+      padding: 12px;
       background: #111827;
     }
-    .crop-stage.square { aspect-ratio: 1 / 1; }
-    .crop-stage img {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      max-width: none;
-      transform-origin: center;
-      user-select: none;
-      pointer-events: none;
+    .crop-canvas-wrap img {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 210px);
     }
-    .crop-controls {
+    .crop-tools {
       display: grid;
+      gap: 10px;
+      padding: 12px 16px 16px;
+      border-top: 1px solid var(--line);
+      background: #ffffff;
+    }
+    .crop-quick {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
     }
-    .crop-controls label {
-      display: grid;
-      gap: 5px;
-      color: var(--muted);
+    .crop-quick button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--ink);
       font-size: 13px;
-      font-weight: 700;
     }
     .crop-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
+    }
+    .crop-actions .save-crop-button {
+      background: var(--accent);
     }
     .card-preview {
       display: none;
@@ -574,18 +605,6 @@ function renderAppHtml(env, url) {
           <h2>我的名片</h2>
           <p>拍照或上傳名片，AI 只抽欄位，圖片與資料都存到 Wasabi。</p>
           <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
-          <div class="cropper" id="cardCropper">
-            <div class="crop-stage" id="cropStage"><img id="cropImage" alt=""></div>
-            <div class="crop-controls">
-              <label>縮放<input id="cropZoom" type="range" min="1" max="3" step="0.01" value="1"></label>
-              <label>左右<input id="cropX" type="range" min="-100" max="100" step="1" value="0"></label>
-              <label>上下<input id="cropY" type="range" min="-100" max="100" step="1" value="0"></label>
-            </div>
-            <div class="crop-actions">
-              <button class="secondary-button" id="applyCropButton" type="button">套用裁切</button>
-              <button class="secondary-button" id="cancelCropButton" type="button">取消裁切</button>
-            </div>
-          </div>
           <div class="button-row">
             <button class="secondary-button" id="recognizeCardButton" type="button">AI 辨識</button>
             <button class="secondary-button" id="saveCardButton" type="button">儲存名片</button>
@@ -640,6 +659,31 @@ function renderAppHtml(env, url) {
       </aside>
     </div>
   </main>
+  <div class="crop-modal" id="cardCropper" aria-hidden="true">
+    <div class="crop-sheet">
+      <div class="crop-head">
+        <div>
+          <strong id="cropTitle">裁切版型圖片</strong>
+          <span id="cropHint">拖曳圖片、雙指縮放，確認後可直接儲存。</span>
+        </div>
+        <button class="icon-button" id="cancelCropButton" type="button">關</button>
+      </div>
+      <div class="crop-canvas-wrap">
+        <img id="cropImage" alt="">
+      </div>
+      <div class="crop-tools">
+        <div class="crop-quick">
+          <button id="cropZoomIn" type="button">放大</button>
+          <button id="cropZoomOut" type="button">縮小</button>
+          <button id="cropReset" type="button">重設</button>
+        </div>
+        <div class="crop-actions">
+          <button class="secondary-button" id="applyCropButton" type="button">確認裁切</button>
+          <button class="save-crop-button" id="saveCropButton" type="button">裁切並儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <script>
     const config = ${JSON.stringify({ storeCode, referralCode, liffId })};
     const statusEl = document.getElementById("status");
@@ -653,6 +697,7 @@ function renderAppHtml(env, url) {
     let activeCardLayout = "standard";
     let selectedCardImages = {};
     let cropState = null;
+    let cropperInstance = null;
     let cardButtons = [];
 
     function setStatus(text) {
@@ -785,82 +830,109 @@ function renderAppHtml(env, url) {
         : { width: 800, height: 533, className: "" };
     }
 
-    function updateCropPreview() {
-      if (!cropState) return;
-      const img = document.getElementById("cropImage");
-      const stage = document.getElementById("cropStage");
-      const spec = cropSpecForLayout(activeCardLayout);
-      stage.classList.toggle("square", spec.className === "square");
-      const box = stage.getBoundingClientRect();
-      const coverScale = Math.max(box.width / cropState.width, box.height / cropState.height);
-      const zoom = Number(document.getElementById("cropZoom").value || 1);
-      const scale = coverScale * zoom;
-      const x = Number(document.getElementById("cropX").value || 0);
-      const y = Number(document.getElementById("cropY").value || 0);
-      img.style.width = Math.round(cropState.width * scale) + "px";
-      img.style.height = Math.round(cropState.height * scale) + "px";
-      img.style.transform = "translate(calc(-50% + " + x + "px), calc(-50% + " + y + "px))";
+    function layoutLabel(layout) {
+      return ({ standard: "標準 800x533", free: "自由 800x533", square: "正方 800x800" })[normalizeLayoutName(layout)] || "標準 800x533";
+    }
+
+    function destroyCropper() {
+      if (cropperInstance) {
+        cropperInstance.destroy();
+        cropperInstance = null;
+      }
+    }
+
+    function createSafeCropper(imgElement, ratio) {
+      destroyCropper();
+      if (!window.Cropper) {
+        throw new Error("Cropper.js 尚未載入");
+      }
+      return new Cropper(imgElement, {
+        aspectRatio: ratio,
+        viewMode: 1,
+        dragMode: "move",
+        autoCropArea: 0.92,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        toggleDragModeOnDblclick: true,
+        zoomable: true,
+        zoomOnTouch: true,
+        zoomOnWheel: true,
+        wheelZoomRatio: 0.08,
+        movable: true,
+        scalable: true,
+        responsive: true,
+        restore: false,
+        guides: true,
+        center: true,
+        highlight: false,
+        background: false,
+      });
     }
 
     async function openCropper(file) {
       const src = await readFileAsDataUrl(file);
-      const probe = new Image();
-      await new Promise((resolve, reject) => {
-        probe.onload = resolve;
-        probe.onerror = reject;
-        probe.src = src;
-      });
-      cropState = { src, width: probe.naturalWidth || probe.width, height: probe.naturalHeight || probe.height };
-      document.getElementById("cropImage").src = src;
-      document.getElementById("cropZoom").value = "1";
-      document.getElementById("cropX").value = "0";
-      document.getElementById("cropY").value = "0";
-      document.getElementById("cardCropper").classList.add("visible");
-      updateCropPreview();
-      setStatus("請先裁切版型圖片，再儲存名片。");
+      const spec = cropSpecForLayout(activeCardLayout);
+      cropState = { src, layout: activeCardLayout };
+      const modal = document.getElementById("cardCropper");
+      const img = document.getElementById("cropImage");
+      document.getElementById("cropTitle").textContent = "裁切" + layoutLabel(activeCardLayout) + "圖片";
+      document.getElementById("cropHint").textContent = "拖曳圖片、雙指縮放。按「裁切並儲存」會直接存入目前版型。";
+      modal.classList.add("visible");
+      modal.setAttribute("aria-hidden", "false");
+      img.onload = () => {
+        try {
+          cropperInstance = createSafeCropper(img, spec.width / spec.height);
+        } catch (error) {
+          setStatus(error.message || "裁切器載入失敗");
+        }
+      };
+      img.src = src;
+      setStatus("請裁切" + layoutLabel(activeCardLayout) + "圖片。");
     }
 
-    async function applyCrop() {
-      if (!cropState) return;
+    async function applyCrop(options = {}) {
+      if (!cropState) return false;
       const spec = cropSpecForLayout(activeCardLayout);
-      const stage = document.getElementById("cropStage").getBoundingClientRect();
-      const coverScale = Math.max(stage.width / cropState.width, stage.height / cropState.height);
-      const zoom = Number(document.getElementById("cropZoom").value || 1);
-      const scale = coverScale * zoom;
-      const offsetX = Number(document.getElementById("cropX").value || 0);
-      const offsetY = Number(document.getElementById("cropY").value || 0);
-      const visibleW = stage.width / scale;
-      const visibleH = stage.height / scale;
-      const centerX = cropState.width / 2 - offsetX / scale;
-      const centerY = cropState.height / 2 - offsetY / scale;
-      let sx = centerX - visibleW / 2;
-      let sy = centerY - visibleH / 2;
-      sx = Math.max(0, Math.min(cropState.width - visibleW, sx));
-      sy = Math.max(0, Math.min(cropState.height - visibleH, sy));
-
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = cropState.src;
-      });
-      const canvas = document.createElement("canvas");
-      canvas.width = spec.width;
-      canvas.height = spec.height;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, sx, sy, visibleW, visibleH, 0, 0, canvas.width, canvas.height);
+      let canvas = null;
+      if (cropperInstance) {
+        canvas = cropperInstance.getCroppedCanvas({
+          width: spec.width,
+          height: spec.height,
+          imageSmoothingEnabled: true,
+          imageSmoothingQuality: "high",
+          fillColor: "#ffffff",
+        });
+      }
+      if (!canvas) {
+        const img = document.getElementById("cropImage");
+        canvas = document.createElement("canvas");
+        canvas.width = spec.width;
+        canvas.height = spec.height;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
       selectedCardImages[activeCardLayout] = canvas.toDataURL("image/jpeg", 0.88);
+      destroyCropper();
       document.getElementById("cardCropper").classList.remove("visible");
+      document.getElementById("cardCropper").setAttribute("aria-hidden", "true");
       cropState = null;
       renderCardPreview({ ...getEffectiveLayoutCard(currentCard, activeCardLayout), ...getCardFormData(), imageUrl: selectedCardImages[activeCardLayout] });
-      setStatus("裁切完成，請儲存名片。");
+      if (options.save) {
+        await saveBusinessCard();
+      } else {
+        setStatus("裁切完成，請按「儲存名片」。");
+      }
+      return true;
     }
 
     function cancelCrop() {
       cropState = null;
+      destroyCropper();
       document.getElementById("cardCropper").classList.remove("visible");
+      document.getElementById("cardCropper").setAttribute("aria-hidden", "true");
+      document.getElementById("cropImage").src = "";
       document.getElementById("cardImageFile").value = "";
     }
 
@@ -1284,11 +1356,12 @@ function renderAppHtml(env, url) {
       const file = event.target.files && event.target.files[0];
       if (file) await openCropper(file);
     });
-    document.getElementById("cropZoom").addEventListener("input", updateCropPreview);
-    document.getElementById("cropX").addEventListener("input", updateCropPreview);
-    document.getElementById("cropY").addEventListener("input", updateCropPreview);
     document.getElementById("applyCropButton").addEventListener("click", applyCrop);
+    document.getElementById("saveCropButton").addEventListener("click", () => applyCrop({ save: true }));
     document.getElementById("cancelCropButton").addEventListener("click", cancelCrop);
+    document.getElementById("cropZoomIn").addEventListener("click", () => cropperInstance && cropperInstance.zoom(0.1));
+    document.getElementById("cropZoomOut").addEventListener("click", () => cropperInstance && cropperInstance.zoom(-0.1));
+    document.getElementById("cropReset").addEventListener("click", () => cropperInstance && cropperInstance.reset());
     document.getElementById("cardLayout").addEventListener("change", (event) => {
       saveCurrentLayoutDraft();
       activeCardLayout = normalizeLayoutName(event.target.value);
