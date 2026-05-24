@@ -684,6 +684,13 @@ function renderAppHtml(env, url) {
           </div>
           <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
           <input id="ecardCoverFile" type="file" accept="image/*" hidden>
+          <div class="card-preview" id="cardPreview">
+            <img id="cardPreviewImage" alt="">
+            <div class="card-preview-body">
+              <div class="card-preview-title" id="cardPreviewTitle"></div>
+              <div class="card-preview-meta" id="cardPreviewMeta"></div>
+            </div>
+          </div>
           <div class="ecard-panel">
             <div class="ecard-block">
               <div class="ecard-title">▦ 名片版型</div>
@@ -745,13 +752,6 @@ function renderAppHtml(env, url) {
             <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
             <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
             <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
-          </div>
-          <div class="card-preview" id="cardPreview">
-            <img id="cardPreviewImage" alt="">
-            <div class="card-preview-body">
-              <div class="card-preview-title" id="cardPreviewTitle"></div>
-              <div class="card-preview-meta" id="cardPreviewMeta"></div>
-            </div>
           </div>
         </div>
       </aside>
