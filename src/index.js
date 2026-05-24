@@ -493,6 +493,30 @@ function renderAppHtml(env, url) {
       color: var(--muted);
       line-height: 1.65;
     }
+    .card-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin: 14px 0 18px;
+      border-bottom: 1px solid #e5edf5;
+      background: #fff;
+      border-radius: 18px 18px 0 0;
+      overflow: hidden;
+    }
+    .card-tab {
+      min-height: 58px;
+      border: 0;
+      border-radius: 0;
+      background: #fff;
+      color: #8a98aa;
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .card-tab.active {
+      color: #2563eb;
+      border-bottom: 2px solid #2563eb;
+    }
+    .card-tab-panel { display: none; }
+    .card-tab-panel.active { display: block; }
     .form-grid {
       display: grid;
       gap: 10px;
@@ -753,8 +777,9 @@ function renderAppHtml(env, url) {
     .card-preview.visible { display: block; }
     .card-preview img {
       width: 100%;
-      max-height: 180px;
-      object-fit: cover;
+      height: auto;
+      max-height: none;
+      object-fit: contain;
       display: block;
       background: var(--soft);
     }
@@ -863,74 +888,92 @@ function renderAppHtml(env, url) {
           </div>
           <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
           <input id="ecardCoverFile" type="file" accept="image/*" hidden>
-          <div class="ecard-panel">
-            <div class="ecard-block">
-              <div class="ecard-title">▦ 名片版型</div>
-              <div class="ecard-segment" id="ecardLayoutSegment">
-                <label><input type="radio" name="ecard-layout" value="standard" checked><span>標準(Mega)</span></label>
-                <label><input type="radio" name="ecard-layout" value="full"><span>滿版(Giga)</span></label>
-                <label><input type="radio" name="ecard-layout" value="square"><span>正方(1:1)</span></label>
+          <div class="card-tabs">
+            <button class="card-tab" type="button" data-card-tab="contact">📋 聯絡資料</button>
+            <button class="card-tab" type="button" data-card-tab="content">✏️ 編輯內容</button>
+            <button class="card-tab active" type="button" data-card-tab="ecard">🪪 數位名片</button>
+          </div>
+
+          <div class="card-tab-panel" id="cardTabContact">
+            <div class="detail-editor" id="detailEditor">
+              <div class="form-grid">
+                <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
+                <div class="field"><label for="cardTitle">職稱</label><input id="cardTitle"></div>
+                <div class="field"><label for="cardCompany">公司</label><input id="cardCompany" autocomplete="organization"></div>
+                <div class="field"><label for="cardPhone">電話</label><input id="cardPhone" autocomplete="tel"></div>
+                <div class="field"><label for="cardEmail">Email</label><input id="cardEmail" autocomplete="email"></div>
+                <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
+                <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
               </div>
-            </div>
-            <div class="ecard-block">
-              <div class="ecard-title">▣ 封面圖片</div>
-              <div class="ecard-upload-row">
-                <input id="ecardImageUrl" placeholder="https://">
-                <button id="uploadEcardImageButton" type="button">上傳</button>
-              </div>
-            </div>
-            <div class="ecard-block">
-              <div class="ecard-toggle-row">
-                <div class="ecard-title">▻ 影片版名片</div>
-                <label class="toggle"><input id="ecardVideoEnabled" type="checkbox"><span></span></label>
-              </div>
-              <input id="ecardVideoUrl" class="file-picker" placeholder="影片網址，例如 https://...mp4">
-              <p class="ecard-note">開啟後分享名片會使用 LINE Flex video hero，封面圖片會作為縮圖。</p>
             </div>
           </div>
-          <div class="card-preview" id="cardPreview">
-            <img id="cardPreviewImage" alt="">
-            <div class="card-preview-body">
-              <div class="card-preview-title" id="cardPreviewTitle"></div>
-              <div class="card-preview-meta" id="cardPreviewMeta"></div>
+
+          <div class="card-tab-panel" id="cardTabContent">
+            <div class="detail-editor">
+              <div class="form-grid">
+                <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
+              </div>
             </div>
           </div>
-          <div class="detail-editor">
-            <div class="form-grid">
-              <div class="compact-grid">
-                <div class="field">
-                  <label for="cardShareLabel">分享標籤</label>
-                  <input id="cardShareLabel" placeholder="分享">
-                </div>
-                <div class="field">
-                  <label for="cardShareColor">顏色</label>
-                  <input id="cardShareColor" type="color" value="#ef4444">
+
+          <div class="card-tab-panel active" id="cardTabEcard">
+            <div class="ecard-panel">
+              <div class="ecard-block">
+                <div class="ecard-title">▦ 名片版型</div>
+                <div class="ecard-segment" id="ecardLayoutSegment">
+                  <label><input type="radio" name="ecard-layout" value="standard" checked><span>標準(Mega)</span></label>
+                  <label><input type="radio" name="ecard-layout" value="full"><span>滿版(Giga)</span></label>
+                  <label><input type="radio" name="ecard-layout" value="square"><span>正方(1:1)</span></label>
                 </div>
               </div>
-              <div class="field">
-                <label>底部按鈕設定</label>
-                <div class="button-editor" id="cardButtonEditor"></div>
-                <button class="secondary-button" id="addCardButton" type="button" style="margin-top: 10px;">+ 新增按鈕</button>
+              <div class="ecard-block">
+                <div class="ecard-title">▣ 封面圖片</div>
+                <div class="ecard-upload-row">
+                  <input id="ecardImageUrl" placeholder="https://">
+                  <button id="uploadEcardImageButton" type="button">上傳</button>
+                </div>
+              </div>
+              <div class="ecard-block">
+                <div class="ecard-toggle-row">
+                  <div class="ecard-title">▻ 影片版名片</div>
+                  <label class="toggle"><input id="ecardVideoEnabled" type="checkbox"><span></span></label>
+                </div>
+                <input id="ecardVideoUrl" class="file-picker" placeholder="影片網址，例如 https://...mp4">
+                <p class="ecard-note">開啟後分享名片會使用 LINE Flex video hero，封面圖片會作為縮圖。</p>
               </div>
             </div>
-          </div>
-          <button class="save-config-button" id="saveEcardConfigButton" type="button">▣ 儲存名片設定</button>
-          <div class="url-grid">
-            <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
-            <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
-            <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
-            <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
-          </div>
-          <div class="detail-editor" id="detailEditor">
-            <div class="form-grid">
-              <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
-              <div class="field"><label for="cardTitle">職稱</label><input id="cardTitle"></div>
-              <div class="field"><label for="cardCompany">公司</label><input id="cardCompany" autocomplete="organization"></div>
-              <div class="field"><label for="cardPhone">電話</label><input id="cardPhone" autocomplete="tel"></div>
-              <div class="field"><label for="cardEmail">Email</label><input id="cardEmail" autocomplete="email"></div>
-              <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
-              <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
-              <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
+            <div class="card-preview" id="cardPreview">
+              <img id="cardPreviewImage" alt="">
+              <div class="card-preview-body">
+                <div class="card-preview-title" id="cardPreviewTitle"></div>
+                <div class="card-preview-meta" id="cardPreviewMeta"></div>
+              </div>
+            </div>
+            <div class="detail-editor">
+              <div class="form-grid">
+                <div class="compact-grid">
+                  <div class="field">
+                    <label for="cardShareLabel">分享標籤</label>
+                    <input id="cardShareLabel" placeholder="分享">
+                  </div>
+                  <div class="field">
+                    <label for="cardShareColor">顏色</label>
+                    <input id="cardShareColor" type="color" value="#ef4444">
+                  </div>
+                </div>
+                <div class="field">
+                  <label>底部按鈕設定</label>
+                  <div class="button-editor" id="cardButtonEditor"></div>
+                  <button class="secondary-button" id="addCardButton" type="button" style="margin-top: 10px;">+ 新增按鈕</button>
+                </div>
+              </div>
+            </div>
+            <button class="save-config-button" id="saveEcardConfigButton" type="button">▣ 儲存名片設定</button>
+            <div class="url-grid">
+              <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
+              <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
+              <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
+              <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
             </div>
           </div>
         </div>
@@ -1483,7 +1526,7 @@ function renderAppHtml(env, url) {
             url: card.imageUrl,
             size: "full",
             aspectRatio: card.layout === "square" ? "1:1" : (card.layout === "full" ? "2:3" : "800:533"),
-            aspectMode: "cover",
+            aspectMode: "fit",
           },
           aspectRatio: card.layout === "square" ? "1:1" : (card.layout === "full" ? "2:3" : "800:533"),
           action: { type: "uri", uri: url },
@@ -1494,7 +1537,7 @@ function renderAppHtml(env, url) {
           url: card.imageUrl,
           size: "full",
           aspectRatio: card.layout === "square" ? "1:1" : (card.layout === "full" ? "2:3" : "800:533"),
-          aspectMode: "cover",
+          aspectMode: "fit",
           action: { type: "uri", uri: url },
         };
       }
@@ -1570,12 +1613,23 @@ function renderAppHtml(env, url) {
       settingsList.style.display = "none";
       memberEl.classList.remove("visible");
       cardSdkEl.classList.add("visible");
+      showCardEditorTab("ecard");
       setTimeout(() => cardSdkEl.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
 
     function closeCardSettings() {
       settingsList.style.display = "";
       cardSdkEl.classList.remove("visible");
+    }
+
+    function showCardEditorTab(tab) {
+      const target = ["contact", "content", "ecard"].includes(tab) ? tab : "ecard";
+      document.querySelectorAll(".card-tab").forEach((button) => {
+        button.classList.toggle("active", button.dataset.cardTab === target);
+      });
+      document.getElementById("cardTabContact").classList.toggle("active", target === "contact");
+      document.getElementById("cardTabContent").classList.toggle("active", target === "content");
+      document.getElementById("cardTabEcard").classList.toggle("active", target === "ecard");
     }
 
     async function copyReferralLinkToClipboard() {
@@ -1603,6 +1657,9 @@ function renderAppHtml(env, url) {
     document.getElementById("navHome").addEventListener("click", () => showView("home"));
     document.getElementById("navSettings").addEventListener("click", () => showView("settings"));
     document.getElementById("refreshLoginButton").addEventListener("click", restartLineLogin);
+    document.querySelectorAll(".card-tab").forEach((button) => {
+      button.addEventListener("click", () => showCardEditorTab(button.dataset.cardTab));
+    });
 
     loginButton.addEventListener("click", async () => {
       if (!config.liffId) return;
@@ -1973,7 +2030,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .actions a { display:block; text-decoration:none; text-align:center; padding:13px 16px; border-radius:8px; font-weight:900; color:white; }
     .layout-standard main { width:min(430px, calc(100% - 24px)); }
     .layout-standard .hero { aspect-ratio:800/533; background:#fff; }
-    .layout-standard .hero img, .layout-standard .hero video { height:100%; object-fit:cover; background:#fff; }
+    .layout-standard .hero img, .layout-standard .hero video { height:100%; object-fit:contain; background:#fff; }
     .layout-standard .body { padding:24px 26px 12px; text-align:center; }
     .layout-standard h1 { font-size:30px; margin-bottom:12px; }
     .layout-standard .intro { margin:14px 0 0; text-align:left; }
@@ -1993,7 +2050,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .layout-square .card-shell { padding-bottom:22px; }
     .layout-square .square-frame { width:100%; aspect-ratio:1/1; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
     .layout-square .hero { min-height:0; }
-    .layout-square .hero img, .layout-square .hero video { height:100%; object-fit:cover; }
+    .layout-square .hero img, .layout-square .hero video { height:100%; object-fit:contain; background:#fff; }
     .layout-square .profile { padding:18px 26px; text-align:center; }
     .layout-square h1 { font-size:28px; margin-bottom:8px; }
     .layout-square .intro { margin-top:10px; color:#607080; }
@@ -2156,7 +2213,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
             url: card.imageUrl,
             size: "full",
             aspectRatio: "${layout === "square" ? "1:1" : (layout === "full" ? "2:3" : "800:533")}",
-            aspectMode: "cover",
+            aspectMode: "fit",
           },
           aspectRatio: "${layout === "square" ? "1:1" : (layout === "full" ? "2:3" : "800:533")}",
           action: { type: "uri", uri: shareConfig.url },
@@ -2167,7 +2224,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
           url: card.imageUrl,
           size: "full",
           aspectRatio: "${layout === "square" ? "1:1" : (layout === "full" ? "2:3" : "800:533")}",
-          aspectMode: "cover",
+          aspectMode: "fit",
           action: { type: "uri", uri: shareConfig.url },
         };
       }
