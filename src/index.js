@@ -11,8 +11,13 @@ const HTML_HEADERS = {
 };
 
 const DEFAULT_RELEASE_MONTHS = 6;
-const CARD_LAYOUTS = ["classic", "poster", "links"];
-const DEFAULT_CARD_LAYOUT = "poster";
+const CARD_LAYOUTS = ["standard", "free", "square"];
+const CARD_LAYOUT_ALIASES = {
+  poster: "standard",
+  classic: "free",
+  links: "square",
+};
+const DEFAULT_CARD_LAYOUT = "standard";
 
 export default {
   async fetch(request, env) {
@@ -44,7 +49,7 @@ export default {
       if (url.pathname.startsWith("/card/") && request.method === "GET") {
         const storage = createWasabiClient(env);
         const route = parseCardRoute(url.pathname);
-        return html(await renderPublicCardHtml(storage, route.slug, url.origin, route.layout));
+        return html(await renderPublicCardHtml(storage, route.slug, url.origin, route.layout, env.LINE_LIFF_ID || ""));
       }
 
       if (url.pathname.startsWith("/asset/") && request.method === "GET") {
@@ -550,9 +555,9 @@ function renderAppHtml(env, url) {
             <div class="field">
               <label for="cardLayout">分享版型</label>
               <select id="cardLayout">
-                <option value="poster">直式行動版</option>
-                <option value="classic">實體名片版</option>
-                <option value="links">連結按鈕版</option>
+                <option value="standard">標準</option>
+                <option value="free">自由</option>
+                <option value="square">正方</option>
               </select>
             </div>
             <div class="field">
@@ -562,9 +567,9 @@ function renderAppHtml(env, url) {
             </div>
           </div>
           <div class="url-grid">
-            <label>直式行動版<input id="publicCardUrlPoster" type="text" readonly></label>
-            <label>實體名片版<input id="publicCardUrlClassic" type="text" readonly></label>
-            <label>連結按鈕版<input id="publicCardUrlLinks" type="text" readonly></label>
+            <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
+            <label>自由<input id="publicCardUrlFree" type="text" readonly></label>
+            <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
             <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
           </div>
           <div class="card-preview" id="cardPreview">
@@ -738,13 +743,13 @@ function renderAppHtml(env, url) {
       document.getElementById("cardIntro").value = card.intro || "";
       document.getElementById("cardShareLabel").value = card.shareLabel || "分享";
       document.getElementById("cardShareColor").value = card.shareColor || "#ef4444";
-      document.getElementById("cardLayout").value = card.layout || "poster";
+      document.getElementById("cardLayout").value = card.layout || "standard";
       cardButtons = Array.isArray(card.buttons) ? card.buttons.slice(0, 6) : defaultCardButtons(card);
       renderCardButtonEditor();
       const urls = card.publicUrls || {};
-      document.getElementById("publicCardUrlPoster").value = urls.poster || card.publicUrl || "";
-      document.getElementById("publicCardUrlClassic").value = urls.classic || card.publicUrl || "";
-      document.getElementById("publicCardUrlLinks").value = urls.links || card.publicUrl || "";
+      document.getElementById("publicCardUrlStandard").value = urls.standard || urls.poster || card.publicUrl || "";
+      document.getElementById("publicCardUrlFree").value = urls.free || urls.classic || card.publicUrl || "";
+      document.getElementById("publicCardUrlSquare").value = urls.square || urls.links || card.publicUrl || "";
       renderCardPreview(card);
     }
 
@@ -838,9 +843,10 @@ function renderAppHtml(env, url) {
     }
 
     function selectedPublicCardUrl(card) {
-      const layout = document.getElementById("cardLayout").value || "poster";
+      const layout = document.getElementById("cardLayout").value || "standard";
       const urls = (card && card.publicUrls) || {};
-      return urls[layout] || card?.publicUrl || "";
+      const aliases = { standard: "poster", free: "classic", square: "links" };
+      return urls[layout] || urls[aliases[layout]] || card?.publicUrl || "";
     }
 
     async function loadMyCard() {
@@ -934,20 +940,23 @@ function renderAppHtml(env, url) {
         header: {
           type: "box",
           layout: "horizontal",
-          justifyContent: "flex-end",
           paddingAll: "12px",
-          contents: [{
-            type: "box",
-            layout: "vertical",
-            backgroundColor: shareColor,
-            cornerRadius: "100px",
-            paddingTop: "6px",
-            paddingBottom: "6px",
-            paddingStart: "18px",
-            paddingEnd: "18px",
-            contents: [{ type: "text", text: shareLabel, color: "#ffffff", weight: "bold", size: "sm", align: "center" }],
-            action: { type: "uri", uri: url },
-          }],
+          contents: [
+            { type: "filler", flex: 1 },
+            {
+              type: "box",
+              layout: "vertical",
+              flex: 0,
+              backgroundColor: shareColor,
+              cornerRadius: "100px",
+              paddingTop: "6px",
+              paddingBottom: "6px",
+              paddingStart: "14px",
+              paddingEnd: "14px",
+              contents: [{ type: "text", text: shareLabel, color: "#ffffff", weight: "bold", size: "sm", align: "center", flex: 0 }],
+              action: { type: "uri", uri: url },
+            },
+          ],
         },
         body: {
           type: "box",
@@ -1269,7 +1278,10 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
 async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
   const card = (await storage.getJson(`business-cards/${tenantId}/${tenantMemberId}.json`)).value;
   if (!card) return null;
-  const publicUrls = card.publicUrls || createCardUrls(origin, card.publicSlug);
+  const publicUrls = { ...createCardUrls(origin, card.publicSlug), ...(card.publicUrls || {}) };
+  publicUrls.standard = publicUrls.standard || publicUrls.poster;
+  publicUrls.free = publicUrls.free || publicUrls.classic;
+  publicUrls.square = publicUrls.square || publicUrls.links;
   return {
     ...card,
     publicUrl: card.publicUrl || publicUrls[DEFAULT_CARD_LAYOUT],
@@ -1281,16 +1293,16 @@ async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
   };
 }
 
-async function renderPublicCardHtml(storage, slug, origin, layout = DEFAULT_CARD_LAYOUT) {
+async function renderPublicCardHtml(storage, slug, origin, layout = DEFAULT_CARD_LAYOUT, liffId = "") {
   const index = (await storage.getJson(`card-index/public-slugs/${slug}.json`)).value;
   if (!index || index.status !== "published") {
     return renderPublicCardShell(null, origin);
   }
   const card = await readBusinessCard(storage, index.tenantId, index.tenantMemberId, origin);
-  return renderPublicCardShell(card, origin, normalizeCardLayout(layout));
+  return renderPublicCardShell(card, origin, normalizeCardLayout(layout), liffId);
 }
 
-function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT) {
+function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffId = "") {
   if (!card) {
     return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Card not found</title></head><body style="font-family:system-ui;padding:32px;">Card not found</body></html>`;
   }
@@ -1308,6 +1320,20 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT) {
   const actionHtml = buttons.map((button) => `<a href="${escapeHtml(normalizeActionUrl(button.url))}" style="background:${escapeHtml(safeCssColor(button.color, "#06c755"))}">${escapeHtml(button.label)}</a>`).join("");
   const image = card.imageUrl ? `<img src="${escapeHtml(card.imageUrl)}" alt="">` : `<div class="visual-empty">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</div>`;
   const bodyClass = `layout-${layout}`;
+  const currentUrl = card.publicUrls?.[layout] || card.publicUrl || "";
+  const sharePayload = {
+    liffId,
+    url: currentUrl,
+    card: {
+      name: title,
+      meta,
+      intro: card.intro || "",
+      imageUrl: card.imageUrl || "",
+      shareLabel,
+      shareColor,
+      buttons,
+    },
+  };
   return `<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -1317,13 +1343,14 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT) {
   <meta property="og:title" content="${escapeHtml(title)}">
   <meta property="og:description" content="${escapeHtml(meta || card.intro || "")}">
   ${card.imageUrl ? `<meta property="og:image" content="${escapeHtml(card.imageUrl)}">` : ""}
+  ${liffId ? `<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>` : ""}
   <style>
     * { box-sizing:border-box; }
     body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2933; background:#eef3f5; }
     main { width:min(760px, calc(100% - 28px)); margin:0 auto; padding:24px 0; }
     .card-shell { position:relative; background:white; border:1px solid #d8e0e8; border-radius:20px; overflow:hidden; box-shadow:0 18px 44px rgba(25,42,61,.12); }
     .share-head { min-height:52px; display:flex; justify-content:flex-end; align-items:center; padding:10px 12px; }
-    .share-badge { display:inline-flex; align-items:center; justify-content:center; min-width:82px; min-height:32px; border-radius:999px; padding:6px 18px; color:white; font-weight:900; text-decoration:none; background:${escapeHtml(shareColor)}; }
+    .share-badge { appearance:none; border:0; display:inline-flex; flex:0 0 auto; width:auto; max-width:max-content; align-items:center; justify-content:center; min-height:32px; border-radius:999px; padding:6px 16px; color:white; font:inherit; font-weight:900; line-height:1.2; white-space:nowrap; text-decoration:none; background:${escapeHtml(shareColor)}; cursor:pointer; }
     .hero { background:#f8fbff; display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .hero img { width:100%; height:100%; object-fit:cover; display:block; }
     .visual-empty { width:120px; height:120px; border-radius:8px; background:#06c755; color:white; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:900; }
@@ -1334,46 +1361,45 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT) {
     .contacts a { color:#1f2933; text-decoration:none; word-break:break-word; }
     .actions { display:grid; gap:10px; }
     .actions a { display:block; text-decoration:none; text-align:center; padding:13px 16px; border-radius:8px; font-weight:900; color:white; }
-    .layout-poster main { width:min(430px, calc(100% - 24px)); }
-    .layout-poster .hero { aspect-ratio:20/13; }
-    .layout-poster .body { padding:24px 26px 12px; text-align:center; }
-    .layout-poster h1 { font-size:30px; margin-bottom:12px; }
-    .layout-poster .intro { margin:14px 0 0; text-align:left; }
-    .layout-poster .actions { padding:22px 26px 26px; }
-    .layout-classic main { width:min(860px, calc(100% - 28px)); }
-    .layout-classic .physical { display:grid; grid-template-columns:minmax(0,1fr) 38%; min-height:340px; }
-    .layout-classic .share-head { position:absolute; top:0; right:0; z-index:2; }
-    .layout-classic .info { padding:64px 34px 30px; display:flex; flex-direction:column; justify-content:space-between; border-left:8px solid #06c755; }
-    .layout-classic .brand { color:#607080; font-weight:800; }
-    .layout-classic h1 { font-size:40px; margin:8px 0; }
-    .layout-classic .meta { font-size:18px; }
-    .layout-classic .intro { margin-top:18px; color:#607080; }
-    .layout-classic .hero { min-height:340px; padding:18px; }
-    .layout-classic .hero img { object-fit:contain; border-radius:6px; box-shadow:0 10px 28px rgba(25,42,61,.10); }
-    .layout-classic .actions { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:16px; }
-    .layout-links main { width:min(430px, calc(100% - 24px)); }
-    .layout-links .card-shell { padding-bottom:22px; }
-    .layout-links .profile { padding:10px 26px 16px; text-align:center; }
-    .layout-links .avatar { width:112px; height:112px; margin:0 auto 16px; border-radius:24px; overflow:hidden; background:#eef3f5; display:grid; place-items:center; }
-    .layout-links .avatar img { width:100%; height:100%; object-fit:cover; }
-    .layout-links h1 { font-size:28px; margin-bottom:8px; }
-    .layout-links .intro { margin-top:14px; color:#607080; }
-    .layout-links .contacts { padding:0 26px 16px; text-align:center; }
-    .layout-links .actions { padding:0 26px; }
+    .layout-standard main { width:min(430px, calc(100% - 24px)); }
+    .layout-standard .hero { aspect-ratio:20/13; }
+    .layout-standard .body { padding:24px 26px 12px; text-align:center; }
+    .layout-standard h1 { font-size:30px; margin-bottom:12px; }
+    .layout-standard .intro { margin:14px 0 0; text-align:left; }
+    .layout-standard .actions { padding:22px 26px 26px; }
+    .layout-free main { width:min(860px, calc(100% - 28px)); }
+    .layout-free .physical { display:grid; grid-template-columns:minmax(0,1fr) 38%; min-height:340px; }
+    .layout-free .share-head { position:absolute; top:0; right:0; z-index:2; }
+    .layout-free .info { padding:64px 34px 30px; display:flex; flex-direction:column; justify-content:space-between; border-left:8px solid #06c755; }
+    .layout-free .brand { color:#607080; font-weight:800; }
+    .layout-free h1 { font-size:40px; margin:8px 0; }
+    .layout-free .meta { font-size:18px; }
+    .layout-free .intro { margin-top:18px; color:#607080; }
+    .layout-free .hero { min-height:340px; padding:18px; }
+    .layout-free .hero img { object-fit:contain; border-radius:6px; box-shadow:0 10px 28px rgba(25,42,61,.10); }
+    .layout-free .actions { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:16px; }
+    .layout-square main { width:min(520px, calc(100% - 24px)); }
+    .layout-square .card-shell { padding-bottom:22px; }
+    .layout-square .square-frame { width:100%; aspect-ratio:1/1; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
+    .layout-square .hero { min-height:0; }
+    .layout-square .profile { padding:18px 26px; text-align:center; }
+    .layout-square h1 { font-size:28px; margin-bottom:8px; }
+    .layout-square .intro { margin-top:10px; color:#607080; }
+    .layout-square .actions { padding:0 26px; }
     @media (max-width: 680px) {
-      .layout-classic .physical { grid-template-columns:1fr; }
-      .layout-classic .hero { order:-1; min-height:220px; }
-      .layout-classic .info { padding:64px 24px 24px; }
+      .layout-free .physical { grid-template-columns:1fr; }
+      .layout-free .hero { order:-1; min-height:220px; }
+      .layout-free .info { padding:64px 24px 24px; }
       h1 { font-size:32px; }
-      .layout-classic .actions { grid-template-columns:1fr; }
+      .layout-free .actions { grid-template-columns:1fr; }
     }
   </style>
 </head>
 <body class="${escapeHtml(bodyClass)}">
   <main>
-    ${layout === "classic" ? `
+    ${layout === "free" ? `
       <section class="card-shell physical">
-        <div class="share-head"><a class="share-badge" href="${escapeHtml(card.publicUrls?.classic || card.publicUrl || "#")}">${escapeHtml(shareLabel)}</a></div>
+        <div class="share-head"><button class="share-badge" id="publicShareButton" type="button">${escapeHtml(shareLabel)}</button></div>
         <div class="info">
           <div>
             <div class="brand">${escapeHtml(card.company || "SDKSYS")}</div>
@@ -1393,26 +1419,22 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT) {
         </div>
         <div class="hero">${image}</div>
       </section>
-    ` : layout === "links" ? `
+    ` : layout === "square" ? `
       <section class="card-shell">
-        <div class="share-head"><a class="share-badge" href="${escapeHtml(card.publicUrls?.links || card.publicUrl || "#")}">${escapeHtml(shareLabel)}</a></div>
-        <div class="profile">
-          <div class="avatar">${image}</div>
-          <h1>${escapeHtml(title)}</h1>
-          <div class="meta">${escapeHtml(meta)}</div>
-          <div class="intro">${escapeHtml(card.intro || "")}</div>
-        </div>
-        <div class="contacts">
-          ${card.phone ? `<a href="${escapeHtml(phoneHref)}">${escapeHtml(card.phone)}</a>` : ""}
-          ${card.email ? `<a href="${escapeHtml(emailHref)}">${escapeHtml(card.email)}</a>` : ""}
-          ${websiteHref ? `<a href="${escapeHtml(websiteHref)}">${escapeHtml(websiteText)}</a>` : ""}
-          ${card.address ? `<a href="${escapeHtml(mapHref)}">${escapeHtml(card.address)}</a>` : ""}
+        <div class="square-frame">
+          <div class="share-head"><button class="share-badge" id="publicShareButton" type="button">${escapeHtml(shareLabel)}</button></div>
+          <div class="hero">${image}</div>
+          <div class="profile">
+            <h1>${escapeHtml(title)}</h1>
+            <div class="meta">${escapeHtml(meta)}</div>
+            <div class="intro">${escapeHtml(card.intro || "")}</div>
+          </div>
         </div>
         ${actionHtml ? `<div class="actions">${actionHtml}</div>` : ""}
       </section>
     ` : `
       <section class="card-shell">
-        <div class="share-head"><a class="share-badge" href="${escapeHtml(card.publicUrls?.poster || card.publicUrl || "#")}">${escapeHtml(shareLabel)}</a></div>
+        <div class="share-head"><button class="share-badge" id="publicShareButton" type="button">${escapeHtml(shareLabel)}</button></div>
         <div class="hero">${image}</div>
         <div class="body">
           <h1>${escapeHtml(title)}</h1>
@@ -1423,6 +1445,101 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT) {
       </section>
     `}
   </main>
+  <script>
+    const shareConfig = ${JSON.stringify(sharePayload)};
+
+    function publicFlexText(value, fallback, limit = 120) {
+      const text = String(value || fallback || " ").replace(/\\s+/g, " ").trim();
+      return (text || " ").slice(0, limit);
+    }
+
+    function buildPublicShareMessage() {
+      const card = shareConfig.card || {};
+      const name = publicFlexText(card.name, "我的名片", 80);
+      const meta = publicFlexText(card.meta, "SDK 名片王", 100);
+      const shareLabel = publicFlexText(card.shareLabel, "分享", 16);
+      const shareColor = card.shareColor || "#ef4444";
+      const buttons = [
+        { label: "查看名片", url: shareConfig.url, color: "#06C755" },
+        ...(Array.isArray(card.buttons) ? card.buttons : []),
+      ].filter((button) => button && button.label && button.url).slice(0, 4);
+      const bubble = {
+        type: "bubble",
+        size: "mega",
+        header: {
+          type: "box",
+          layout: "horizontal",
+          paddingAll: "12px",
+          contents: [
+            { type: "filler", flex: 1 },
+            {
+              type: "box",
+              layout: "vertical",
+              flex: 0,
+              backgroundColor: shareColor,
+              cornerRadius: "100px",
+              paddingTop: "6px",
+              paddingBottom: "6px",
+              paddingStart: "14px",
+              paddingEnd: "14px",
+              contents: [{ type: "text", text: shareLabel, color: "#ffffff", weight: "bold", size: "sm", align: "center", flex: 0 }],
+              action: { type: "uri", uri: shareConfig.url },
+            },
+          ],
+        },
+        body: {
+          type: "box",
+          layout: "vertical",
+          spacing: "md",
+          contents: [
+            { type: "text", text: name, weight: "bold", size: "xl", wrap: true, align: "center", color: "#1f2933" },
+            { type: "text", text: meta, size: "sm", color: "#607080", wrap: true, align: "center" },
+            { type: "separator", margin: "md" },
+            { type: "text", text: publicFlexText(card.intro || shareConfig.url, "點擊查看完整名片", 180), size: "sm", color: "#364756", wrap: true, margin: "md" },
+          ],
+          action: { type: "uri", uri: shareConfig.url },
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: buttons.map((button) => ({
+            type: "button",
+            style: "primary",
+            height: "sm",
+            color: button.color || "#06C755",
+            action: { type: "uri", label: publicFlexText(button.label, "開啟", 20), uri: button.url || shareConfig.url },
+          })),
+        },
+      };
+      if (card.imageUrl && /^https:\\/\\//i.test(card.imageUrl)) {
+        bubble.hero = {
+          type: "image",
+          url: card.imageUrl,
+          size: "full",
+          aspectRatio: "20:13",
+          aspectMode: "cover",
+          action: { type: "uri", uri: shareConfig.url },
+        };
+      }
+      return { type: "flex", altText: name + " 的名片", contents: bubble };
+    }
+
+    async function sharePublicCard() {
+      try {
+        if (shareConfig.liffId && window.liff) {
+          await liff.init({ liffId: shareConfig.liffId });
+          if (liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
+            await liff.shareTargetPicker([buildPublicShareMessage()]);
+            return;
+          }
+        }
+      } catch (error) {}
+      location.href = "https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(shareConfig.url || location.href);
+    }
+
+    document.getElementById("publicShareButton")?.addEventListener("click", sharePublicCard);
+  </script>
 </body>
 </html>`;
 }
@@ -1528,15 +1645,19 @@ function parseCardRoute(pathname) {
 
 function normalizeCardLayout(value) {
   const layout = cleanSlug(value || DEFAULT_CARD_LAYOUT);
+  if (CARD_LAYOUT_ALIASES[layout]) return CARD_LAYOUT_ALIASES[layout];
   return CARD_LAYOUTS.includes(layout) ? layout : DEFAULT_CARD_LAYOUT;
 }
 
 function createCardUrls(origin, slug) {
   const encoded = encodeURIComponent(slug);
   return {
-    poster: `${origin}/card/${encoded}/poster`,
-    classic: `${origin}/card/${encoded}/classic`,
-    links: `${origin}/card/${encoded}/links`,
+    standard: `${origin}/card/${encoded}/standard`,
+    free: `${origin}/card/${encoded}/free`,
+    square: `${origin}/card/${encoded}/square`,
+    poster: `${origin}/card/${encoded}/standard`,
+    classic: `${origin}/card/${encoded}/free`,
+    links: `${origin}/card/${encoded}/square`,
   };
 }
 
