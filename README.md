@@ -26,6 +26,7 @@ npx.cmd wrangler secret put WASABI_SECRET_ACCESS_KEY
 npx.cmd wrangler secret put MEMBER_NO_SECRET
 npx.cmd wrangler secret put SYSTEM_API_KEY
 npx.cmd wrangler secret put LINE_LOGIN_CHANNEL_ID
+npx.cmd wrangler secret put LINE_LIFF_ID
 ```
 
 ## Storage Environment
@@ -44,13 +45,30 @@ See [docs/wasabi-storage.md](docs/wasabi-storage.md) for key layout.
 Create or update a tenant before LINE Login:
 
 ```powershell
+$apiKey = "YOUR_SYSTEM_API_KEY"
+
+$body = @{
+  tenantId = "demo-shop"
+  storeCode = "DEMO"
+  name = "Demo Shop"
+  plan = "free"
+} | ConvertTo-Json -Compress
+
+$body | Set-Content -LiteralPath "tenant-upsert-payload.json" -Encoding UTF8
+
 curl.exe -X POST "https://sdksys.fangwl591021.workers.dev/api/admin/tenants/upsert" `
   -H "content-type: application/json" `
-  -H "x-sdksys-api-key: YOUR_SYSTEM_API_KEY" `
-  --data-raw "{""tenantId"":""demo-shop"",""storeCode"":""DEMO"",""name"":""Demo Shop"",""plan"":""free""}"
+  -H "x-sdksys-api-key: $apiKey" `
+  --data-binary "@tenant-upsert-payload.json"
 ```
 
 Then the front end can call:
+
+```text
+https://sdksys.fangwl591021.workers.dev/app?storeCode=DEMO
+```
+
+Or call the API directly:
 
 ```text
 POST /api/auth/line-login

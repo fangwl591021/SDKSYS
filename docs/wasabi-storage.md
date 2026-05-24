@@ -23,6 +23,7 @@ WASABI_SECRET_ACCESS_KEY
 MEMBER_NO_SECRET
 SYSTEM_API_KEY
 LINE_LOGIN_CHANNEL_ID
+LINE_LIFF_ID
 ```
 
 ## Key Layout
@@ -61,7 +62,9 @@ Initial internal endpoints:
 
 ```text
 GET  /health
+GET  /app?storeCode=DEMO
 GET  /api/system/storage
+GET  /api/tenants/resolve?storeCode=DEMO
 POST /api/member-number/preview
 POST /api/admin/tenants/upsert
 POST /api/auth/line-login

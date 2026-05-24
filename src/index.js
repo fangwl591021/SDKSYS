@@ -6,6 +6,10 @@ const TEXT_HEADERS = {
   "content-type": "text/plain; charset=utf-8",
 };
 
+const HTML_HEADERS = {
+  "content-type": "text/html; charset=utf-8",
+};
+
 const DEFAULT_RELEASE_MONTHS = 6;
 
 export default {
@@ -31,6 +35,10 @@ export default {
         });
       }
 
+      if (url.pathname === "/app" && request.method === "GET") {
+        return html(renderAppHtml(env, url));
+      }
+
       if (url.pathname === "/api/system/storage" && request.method === "GET") {
         return json({
           provider: "wasabi",
@@ -40,6 +48,15 @@ export default {
           basePrefix: normalizePrefix(env.WASABI_BASE_PREFIX),
           secretConfigured: Boolean(env.WASABI_ACCESS_KEY_ID && env.WASABI_SECRET_ACCESS_KEY),
         });
+      }
+
+      if (url.pathname === "/api/tenants/resolve" && request.method === "GET") {
+        const storage = createWasabiClient(env);
+        const tenant = await resolveTenant(storage, {
+          tenantId: url.searchParams.get("tenantId"),
+          storeCode: url.searchParams.get("storeCode"),
+        });
+        return json({ ok: true, tenant: publicTenant(tenant) });
       }
 
       if (url.pathname === "/api/auth/line-login" && request.method === "POST") {
@@ -116,6 +133,231 @@ export default {
     }
   },
 };
+
+function renderAppHtml(env, url) {
+  const storeCode = cleanCode(url.searchParams.get("storeCode") || "DEMO");
+  const referralCode = cleanCode(url.searchParams.get("ref") || url.searchParams.get("referralCode") || "");
+  const liffId = env.LINE_LIFF_ID || "";
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SDKSYS Member</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #607080;
+      --line: #d8e0e8;
+      --accent: #06c755;
+      --accent-dark: #049545;
+      --paper: #ffffff;
+      --soft: #f4f7fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(135deg, #f8fbff 0%, #eef6f0 52%, #f7f1e8 100%);
+    }
+    main {
+      width: min(960px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0;
+    }
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+      gap: 20px;
+      align-items: stretch;
+    }
+    .panel, .card {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 18px 50px rgba(25, 42, 61, 0.10);
+    }
+    .panel { padding: 28px; }
+    .card { padding: 22px; }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(28px, 5vw, 44px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 16px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .meta {
+      display: grid;
+      gap: 8px;
+      margin: 22px 0;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .row strong {
+      color: var(--ink);
+      text-align: right;
+      word-break: break-word;
+    }
+    button {
+      width: 100%;
+      min-height: 46px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-dark); }
+    button:disabled {
+      cursor: not-allowed;
+      background: #9aa8b4;
+    }
+    .status {
+      min-height: 44px;
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--muted);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .member {
+      display: none;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .member.visible { display: block; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--soft);
+      color: var(--ink);
+    }
+    @media (max-width: 760px) {
+      main { width: min(100% - 24px, 960px); padding: 20px 0; }
+      .shell { grid-template-columns: 1fr; }
+      .panel, .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="shell">
+      <section class="panel">
+        <h1>SDK 名片王</h1>
+        <p>使用 LINE Login 建立租戶會員身份，會員編號會依商店隔離產生，不暴露平台 UID。</p>
+        <div class="meta">
+          <div class="row"><span>商店代碼</span><strong id="storeCode">${escapeHtml(storeCode)}</strong></div>
+          <div class="row"><span>推薦碼</span><strong id="referralCode">${escapeHtml(referralCode || "未帶入")}</strong></div>
+          <div class="row"><span>LIFF</span><strong>${liffId ? "已設定" : "尚未設定"}</strong></div>
+        </div>
+      </section>
+      <aside class="card">
+        <h2>會員登入</h2>
+        <p>登入後會建立租戶會員、會員編號、推薦碼，並寫入 Wasabi。</p>
+        <button id="loginButton" type="button">LINE Login</button>
+        <div class="status" id="status">準備中</div>
+        <div class="member" id="member">
+          <div class="row"><span>會員編號</span><strong id="memberNo"></strong></div>
+          <div class="row"><span>我的推薦碼</span><strong id="myReferralCode"></strong></div>
+          <div class="row"><span>歸屬狀態</span><strong id="attribution"></strong></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+  <script>
+    const config = ${JSON.stringify({ storeCode, referralCode, liffId })};
+    const statusEl = document.getElementById("status");
+    const loginButton = document.getElementById("loginButton");
+    const memberEl = document.getElementById("member");
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    async function boot() {
+      if (!config.liffId) {
+        loginButton.disabled = true;
+        setStatus("尚未設定 LINE_LIFF_ID，請先在 Worker secret 或變數加入 LIFF ID。");
+        return;
+      }
+      try {
+        await liff.init({ liffId: config.liffId });
+        if (!liff.isLoggedIn()) {
+          setStatus("請使用 LINE Login 登入。");
+          return;
+        }
+        await submitIdToken();
+      } catch (error) {
+        setStatus(error.message || "LIFF 初始化失敗");
+      }
+    }
+
+    async function submitIdToken() {
+      const idToken = liff.getIDToken();
+      if (!idToken) {
+        setStatus("無法取得 LINE idToken，請重新登入。");
+        return;
+      }
+      setStatus("正在建立會員身份...");
+      const response = await fetch("/api/auth/line-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          storeCode: config.storeCode,
+          referralCode: config.referralCode || undefined,
+        }),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        setStatus(result.message || result.error || "登入失敗");
+        return;
+      }
+      document.getElementById("memberNo").textContent = result.member.memberNo;
+      document.getElementById("myReferralCode").textContent = result.member.referralCode;
+      document.getElementById("attribution").textContent = result.attribution.result || result.attribution.status;
+      memberEl.classList.add("visible");
+      setStatus("登入完成");
+    }
+
+    loginButton.addEventListener("click", async () => {
+      if (!config.liffId) return;
+      if (!liff.isLoggedIn()) {
+        liff.login({ redirectUri: location.href });
+        return;
+      }
+      await submitIdToken();
+    });
+
+    boot();
+  </script>
+</body>
+</html>`;
+}
 
 async function handleLineLogin({ env, storage, payload }) {
   assertString(payload.idToken, "idToken");
@@ -551,6 +793,15 @@ function safeTime(value) {
   return value.replace(/[^0-9]/g, "");
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function base36FromHex(hexValue) {
   let output = "";
   for (let index = 0; index < hexValue.length; index += 10) {
@@ -704,6 +955,16 @@ function text(body, init = {}) {
     ...init,
     headers: {
       ...TEXT_HEADERS,
+      ...(init.headers || {}),
+    },
+  }));
+}
+
+function html(body, init = {}) {
+  return withCors(new Response(body, {
+    ...init,
+    headers: {
+      ...HTML_HEADERS,
       ...(init.headers || {}),
     },
   }));
