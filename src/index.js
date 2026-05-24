@@ -703,22 +703,8 @@ function renderAppHtml(env, url) {
               <div class="card-preview-meta" id="cardPreviewMeta"></div>
             </div>
           </div>
-          <div class="url-grid">
-            <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
-            <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
-            <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
-            <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
-          </div>
-          <div class="detail-editor" id="detailEditor">
+          <div class="detail-editor">
             <div class="form-grid">
-              <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
-              <div class="field"><label for="cardTitle">職稱</label><input id="cardTitle"></div>
-              <div class="field"><label for="cardCompany">公司</label><input id="cardCompany" autocomplete="organization"></div>
-              <div class="field"><label for="cardPhone">電話</label><input id="cardPhone" autocomplete="tel"></div>
-              <div class="field"><label for="cardEmail">Email</label><input id="cardEmail" autocomplete="email"></div>
-              <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
-              <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
-              <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
               <div class="compact-grid">
                 <div class="field">
                   <label for="cardShareLabel">分享標籤</label>
@@ -737,6 +723,24 @@ function renderAppHtml(env, url) {
             </div>
           </div>
           <button class="save-config-button" id="saveEcardConfigButton" type="button">▣ 儲存名片設定</button>
+          <div class="url-grid">
+            <label>標準<input id="publicCardUrlStandard" type="text" readonly></label>
+            <label>滿版<input id="publicCardUrlFull" type="text" readonly></label>
+            <label>正方<input id="publicCardUrlSquare" type="text" readonly></label>
+            <button class="secondary-button" id="shareCardButton" type="button">分享名片</button>
+          </div>
+          <div class="detail-editor" id="detailEditor">
+            <div class="form-grid">
+              <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
+              <div class="field"><label for="cardTitle">職稱</label><input id="cardTitle"></div>
+              <div class="field"><label for="cardCompany">公司</label><input id="cardCompany" autocomplete="organization"></div>
+              <div class="field"><label for="cardPhone">電話</label><input id="cardPhone" autocomplete="tel"></div>
+              <div class="field"><label for="cardEmail">Email</label><input id="cardEmail" autocomplete="email"></div>
+              <div class="field"><label for="cardWebsite">網站</label><input id="cardWebsite" autocomplete="url"></div>
+              <div class="field"><label for="cardAddress">地址</label><input id="cardAddress"></div>
+              <div class="field"><label for="cardIntro">介紹</label><textarea id="cardIntro"></textarea></div>
+            </div>
+          </div>
         </div>
       </aside>
     </div>
