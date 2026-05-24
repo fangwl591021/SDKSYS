@@ -220,6 +220,14 @@ function renderAppHtml(env, url) {
       color: var(--ink);
       background: #ffe8f1;
     }
+    body.cropper-open {
+      overflow: hidden;
+      background: #020617;
+    }
+    body.cropper-open main {
+      visibility: hidden;
+      pointer-events: none;
+    }
     main {
       width: min(540px, 100%);
       margin: 0 auto;
@@ -572,15 +580,19 @@ function renderAppHtml(env, url) {
       z-index: 2000;
       display: none;
       flex-direction: column;
-      width: min(100%, 540px);
+      width: 100vw;
+      height: 100dvh;
       margin: 0 auto;
-      background: rgba(2, 6, 23, .94);
+      background: #020617;
     }
     .cropper-modal.visible { display: flex; }
     .cropper-stage {
       flex: 1;
       min-height: 0;
       overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       background: #020617;
     }
     .cropper-stage img {
@@ -594,6 +606,14 @@ function renderAppHtml(env, url) {
       gap: 10px;
       padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
       background: #020617;
+      box-shadow: 0 -12px 30px rgba(0, 0, 0, .45);
+    }
+    .cropper-container,
+    .cropper-wrap-box,
+    .cropper-canvas,
+    .cropper-drag-box,
+    .cropper-crop-box {
+      max-width: 100%;
     }
     .cropper-tools {
       display: grid;
@@ -1803,11 +1823,16 @@ function renderAppHtml(env, url) {
     function createSafeCropper(imgElement, ratio) {
       const parent = imgElement.parentElement;
       if (parent) {
-        parent.style.display = "block";
+        parent.style.display = "flex";
+        parent.style.alignItems = "center";
+        parent.style.justifyContent = "center";
         parent.style.width = "100%";
         parent.style.height = "100%";
         parent.style.position = "relative";
       }
+      imgElement.style.display = "block";
+      imgElement.style.maxWidth = "100%";
+      imgElement.style.maxHeight = "100%";
       const freeRatio = ratio === null || ratio === undefined || Number.isNaN(Number(ratio));
       return new Cropper(imgElement, {
         aspectRatio: freeRatio ? NaN : ratio,
@@ -1836,6 +1861,7 @@ function renderAppHtml(env, url) {
       const modal = document.getElementById("cardCropperModal");
       modal.classList.remove("visible");
       modal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("cropper-open");
       if (cardCropper) {
         cardCropper.destroy();
         cardCropper = null;
@@ -1871,6 +1897,7 @@ function renderAppHtml(env, url) {
         }
         const modal = document.getElementById("cardCropperModal");
         const img = document.getElementById("cardCropperImage");
+        document.body.classList.add("cropper-open");
         modal.classList.add("visible");
         modal.setAttribute("aria-hidden", "false");
         img.onload = () => {
@@ -1923,6 +1950,9 @@ function renderAppHtml(env, url) {
       } finally {
         button.disabled = false;
         button.textContent = original || "確認裁切";
+        if (!document.getElementById("cardCropperModal").classList.contains("visible")) {
+          document.body.classList.remove("cropper-open");
+        }
       }
     }
 
