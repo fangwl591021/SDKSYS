@@ -1191,12 +1191,12 @@ function renderAppHtml(env, url) {
           <input class="hidden-file" id="cardImageFile" type="file" accept="image/*">
           <input id="ecardCoverFile" type="file" accept="image/*" hidden>
           <div class="card-tabs">
-            <button class="card-tab" type="button" data-card-tab="contact">📋 聯絡資料</button>
+            <button class="card-tab active" type="button" data-card-tab="contact">📋 聯絡資料</button>
             <button class="card-tab" type="button" data-card-tab="content">✏️ 編輯內容</button>
-            <button class="card-tab active" type="button" data-card-tab="ecard">🪪 數位名片</button>
+            <button class="card-tab" type="button" data-card-tab="ecard">🪪 數位名片</button>
           </div>
 
-          <div class="card-tab-panel" id="cardTabContact">
+          <div class="card-tab-panel active" id="cardTabContact">
             <div class="detail-editor" id="detailEditor">
               <div class="form-grid">
                 <div class="field"><label for="cardName">姓名</label><input id="cardName" autocomplete="name"></div>
@@ -1218,7 +1218,7 @@ function renderAppHtml(env, url) {
             </div>
           </div>
 
-          <div class="card-tab-panel active" id="cardTabEcard">
+          <div class="card-tab-panel" id="cardTabEcard">
             <div class="ecard-panel">
               <div class="ecard-block">
                 <div class="ecard-title">▦ 名片版型</div>
@@ -2365,7 +2365,7 @@ function renderAppHtml(env, url) {
       memberEl.classList.remove("visible");
       profileSdkEl.classList.remove("visible");
       cardSdkEl.classList.add("visible");
-      showCardEditorTab("ecard");
+      showCardEditorTab("contact");
       setTimeout(() => cardSdkEl.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
 
