@@ -1110,6 +1110,32 @@ function renderAppHtml(env, url) {
           </div>
         </div>
         <div class="card-tab-panel" id="libraryTabEcard">
+          <div class="ecard-panel">
+            <div class="ecard-block">
+              <div class="ecard-title">▦ 名片版型</div>
+              <div class="ecard-segment" id="libraryEcardLayoutSegment">
+                <label><input type="radio" name="library-ecard-layout" value="standard" checked><span>標準(Mega)</span></label>
+                <label><input type="radio" name="library-ecard-layout" value="full"><span>滿版(Giga)</span></label>
+                <label><input type="radio" name="library-ecard-layout" value="square"><span>正方(1:1)</span></label>
+              </div>
+            </div>
+            <div class="ecard-block">
+              <div class="ecard-title">▣ 封面圖片</div>
+              <div class="ecard-upload-row">
+                <input id="libraryEcardImageUrl" placeholder="https://">
+                <button id="uploadLibraryEcardImageButton" type="button">上傳</button>
+              </div>
+              <input id="libraryEcardCoverFile" type="file" accept="image/*" hidden>
+            </div>
+            <div class="ecard-block">
+              <div class="ecard-toggle-row">
+                <div class="ecard-title">▷ 影片版名片</div>
+                <label class="toggle"><input id="libraryEcardVideoEnabled" type="checkbox"><span></span></label>
+              </div>
+              <input id="libraryEcardVideoUrl" class="file-picker" placeholder="影片網址，例如 https://...mp4">
+              <p class="ecard-note">開啟後分享名片會使用 LINE Flex video hero，封面圖片會作為縮圖。</p>
+            </div>
+          </div>
           <div class="card-preview" id="libraryPreview">
             <img id="libraryPreviewImage" alt="">
             <div class="card-preview-body">
@@ -1119,8 +1145,30 @@ function renderAppHtml(env, url) {
               <div class="card-preview-links" id="libraryPreviewLinks"></div>
             </div>
           </div>
+          <div class="detail-editor">
+            <div class="form-grid">
+              <div class="compact-grid">
+                <div class="field">
+                  <label for="libraryShareLabel">分享標籤</label>
+                  <input id="libraryShareLabel" placeholder="分享">
+                </div>
+                <div class="field">
+                  <label for="libraryShareColor">顏色</label>
+                  <input id="libraryShareColor" type="color" value="#ef4444">
+                </div>
+              </div>
+              <div class="field">
+                <label>底部按鈕設定</label>
+                <div class="button-editor" id="libraryButtonEditor"></div>
+                <button class="secondary-button" id="addLibraryButton" type="button" style="margin-top: 10px;">+ 新增按鈕</button>
+              </div>
+            </div>
+          </div>
           <div class="url-grid">
-            <label>分享網址<input id="libraryPublicUrl" type="text" readonly></label>
+            <label>標準<input id="libraryPublicUrlStandard" type="text" readonly></label>
+            <label>滿版<input id="libraryPublicUrlFull" type="text" readonly></label>
+            <label>正方<input id="libraryPublicUrlSquare" type="text" readonly></label>
+            <label>目前分享網址<input id="libraryPublicUrl" type="text" readonly></label>
           </div>
         </div>
         <div class="button-row">
@@ -1332,6 +1380,9 @@ function renderAppHtml(env, url) {
     let cardCropper = null;
     let lastCardUploadImage = "";
     let cardButtons = [];
+    let activeLibraryLayout = "standard";
+    let libraryButtons = [];
+    let selectedLibraryImages = {};
 
     function setStatus(text) {
       statusEl.textContent = text;
@@ -1813,20 +1864,121 @@ function renderAppHtml(env, url) {
       document.getElementById("libraryTabEcard").classList.toggle("active", target === "ecard");
     }
 
-    function fillLibraryForm(card) {
+    function setSelectedLibraryLayout(layout) {
+      const normalized = normalizeLayoutName(layout);
+      const input = document.querySelector('input[name="library-ecard-layout"][value="' + normalized + '"]');
+      if (input) input.checked = true;
+      activeLibraryLayout = normalized;
+      return normalized;
+    }
+
+    function getSelectedLibraryLayout() {
+      const input = document.querySelector('input[name="library-ecard-layout"]:checked');
+      return normalizeLayoutName(input ? input.value : activeLibraryLayout);
+    }
+
+    function getLibraryButtons() {
+      return libraryButtons.map((button) => ({
+        label: String(button.label || "").trim(),
+        url: String(button.url || "").trim(),
+        color: String(button.color || "#06c755").trim(),
+      })).filter((button) => button.label && button.url).slice(0, 6);
+    }
+
+    function renderLibraryButtonEditor() {
+      const editor = document.getElementById("libraryButtonEditor");
+      editor.innerHTML = "";
+      libraryButtons.forEach((button, index) => {
+        const row = document.createElement("div");
+        row.className = "button-item";
+
+        const color = document.createElement("input");
+        color.type = "color";
+        color.value = button.color || "#06c755";
+        color.addEventListener("input", () => { libraryButtons[index].color = color.value; });
+
+        const fields = document.createElement("div");
+        fields.className = "button-fields";
+        const label = document.createElement("input");
+        label.placeholder = "按鈕文字";
+        label.value = button.label || "";
+        label.addEventListener("input", () => { libraryButtons[index].label = label.value; });
+        const url = document.createElement("input");
+        url.placeholder = "https:// / tel: / mailto:";
+        url.value = button.url || "";
+        url.addEventListener("input", () => { libraryButtons[index].url = url.value; });
+        fields.append(label, url);
+
+        const move = document.createElement("button");
+        move.type = "button";
+        move.textContent = index === 0 ? "↓" : "↑";
+        move.addEventListener("click", () => {
+          const target = index === 0 ? 1 : index - 1;
+          if (target < 0 || target >= libraryButtons.length) return;
+          const current = libraryButtons[index];
+          libraryButtons[index] = libraryButtons[target];
+          libraryButtons[target] = current;
+          renderLibraryButtonEditor();
+        });
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "刪";
+        remove.className = "danger-button";
+        remove.addEventListener("click", () => {
+          libraryButtons.splice(index, 1);
+          renderLibraryButtonEditor();
+        });
+
+        row.append(color, fields, move, remove);
+        editor.appendChild(row);
+      });
+    }
+
+    function saveCurrentLibraryLayoutDraft() {
+      if (!currentLibraryCard) return;
+      const layout = normalizeLayoutName(activeLibraryLayout);
+      activeLibraryLayout = layout;
+      currentLibraryCard.layouts = { ...(currentLibraryCard.layouts || {}) };
+      currentLibraryCard.layouts[layout] = {
+        ...(currentLibraryCard.layouts[layout] || {}),
+        ...getLibraryFormData(),
+        layout,
+      };
+    }
+
+    function fillLibraryForm(card, layout) {
       currentLibraryCard = card || null;
-      document.getElementById("libraryName").value = card?.name || "";
-      document.getElementById("libraryTitle").value = card?.title || "";
-      document.getElementById("libraryCompany").value = card?.company || "";
-      document.getElementById("libraryPhone").value = card?.phone || "";
-      document.getElementById("libraryEmail").value = card?.email || "";
-      document.getElementById("libraryWebsite").value = card?.website || "";
-      document.getElementById("libraryAddress").value = card?.address || "";
-      document.getElementById("libraryIntro").value = card?.intro || "";
-      document.getElementById("libraryPublicUrl").value = card?.publicUrl || "";
+      activeLibraryLayout = setSelectedLibraryLayout(layout || card?.layout || activeLibraryLayout || "standard");
+      const view = getEffectiveLayoutCard(card || {}, activeLibraryLayout);
+      document.getElementById("libraryName").value = view.name || "";
+      document.getElementById("libraryTitle").value = view.title || "";
+      document.getElementById("libraryCompany").value = view.company || "";
+      document.getElementById("libraryPhone").value = view.phone || "";
+      document.getElementById("libraryEmail").value = view.email || "";
+      document.getElementById("libraryWebsite").value = view.website || "";
+      document.getElementById("libraryAddress").value = view.address || "";
+      document.getElementById("libraryIntro").value = view.intro || "";
+      document.getElementById("libraryShareLabel").value = cleanShareLabelInput(view.shareLabel);
+      document.getElementById("libraryShareColor").value = view.shareColor || "#ef4444";
+      document.getElementById("libraryEcardImageUrl").value = view.imageUrl || "";
+      document.getElementById("libraryEcardVideoEnabled").checked = Boolean(view.videoEnabled);
+      document.getElementById("libraryEcardVideoUrl").value = view.videoUrl || "";
+      libraryButtons = Array.isArray(view.buttons) && view.buttons.length ? view.buttons.slice(0, 6) : defaultCardButtons(view);
+      renderLibraryButtonEditor();
+      const urls = card?.publicUrls || {};
+      document.getElementById("libraryPublicUrlStandard").value = urls.standard || card?.publicUrl || "";
+      document.getElementById("libraryPublicUrlFull").value = urls.full || urls.free || urls.classic || card?.publicUrl || "";
+      document.getElementById("libraryPublicUrlSquare").value = urls.square || urls.links || card?.publicUrl || "";
+      document.getElementById("libraryPublicUrl").value = view.publicUrl || card?.publicUrl || "";
+      renderLibraryPreview(view);
+    }
+
+    function renderLibraryPreview(card) {
       const preview = document.getElementById("libraryPreview");
-      document.getElementById("libraryPreviewImage").src = card?.imageUrl || "";
-      document.getElementById("libraryPreviewImage").style.display = card?.imageUrl ? "block" : "none";
+      const previewImage = selectedLibraryImages[activeLibraryLayout] || card?.imageUrl || "";
+      document.getElementById("libraryPreviewImage").src = previewImage;
+      document.getElementById("libraryPreviewImage").style.display = previewImage ? "block" : "none";
       document.getElementById("libraryPreviewTitle").textContent = libraryCardTitle(card);
       document.getElementById("libraryPreviewMeta").textContent = [card?.company, card?.title].filter(Boolean).join(" / ");
       document.getElementById("libraryPreviewIntro").textContent = card?.intro || "";
@@ -1843,7 +1995,7 @@ function renderAppHtml(env, url) {
         row.textContent = label + "：" + value;
         links.appendChild(row);
       });
-      preview.classList.toggle("visible", Boolean(card));
+      preview.classList.toggle("visible", Boolean(card && (card.name || card.company || previewImage)));
     }
 
     function getLibraryFormData() {
@@ -1856,12 +2008,20 @@ function renderAppHtml(env, url) {
         website: document.getElementById("libraryWebsite").value.trim(),
         address: document.getElementById("libraryAddress").value.trim(),
         intro: document.getElementById("libraryIntro").value.trim(),
+        shareLabel: cleanShareLabelInput(document.getElementById("libraryShareLabel").value),
+        shareColor: document.getElementById("libraryShareColor").value,
+        layout: getSelectedLibraryLayout(),
+        imageUrl: cleanImageUrlInput(document.getElementById("libraryEcardImageUrl").value),
+        videoEnabled: document.getElementById("libraryEcardVideoEnabled").checked,
+        videoUrl: document.getElementById("libraryEcardVideoUrl").value.trim(),
+        buttons: getLibraryButtons(),
       };
     }
 
     function openLibraryDetail(cardId) {
       const card = libraryCards.find((item) => item.cardId === cardId);
       if (!card) return;
+      selectedLibraryImages = {};
       fillLibraryForm(card);
       document.getElementById("libraryListSection").style.display = "none";
       document.getElementById("libraryDetail").classList.add("visible");
@@ -1871,12 +2031,16 @@ function renderAppHtml(env, url) {
 
     function closeLibraryDetail() {
       currentLibraryCard = null;
+      selectedLibraryImages = {};
       document.getElementById("libraryListSection").style.display = "";
       document.getElementById("libraryDetail").classList.remove("visible");
     }
 
     async function saveLibraryCard() {
-      if (!currentLibraryCard || !currentSessionToken) return;
+      if (!currentLibraryCard || !currentSessionToken) return false;
+      saveCurrentLibraryLayoutDraft();
+      const layout = activeLibraryLayout;
+      const card = { ...currentLibraryCard, ...getLibraryFormData(), layout };
       setStatus("正在儲存名片資料...");
       const response = await fetch("/api/cards/library/upsert", {
         method: "POST",
@@ -1885,34 +2049,52 @@ function renderAppHtml(env, url) {
           sessionToken: currentSessionToken,
           storeCode: config.storeCode,
           cardId: currentLibraryCard.cardId,
-          card: { ...currentLibraryCard, ...getLibraryFormData() },
+          card,
+          imageDataUrl: selectedLibraryImages[layout] || undefined,
+          imageDataUrls: selectedLibraryImages,
         }),
       });
       const result = await response.json();
       if (!result.ok) {
         setStatus(result.message || result.error || "名片儲存失敗");
-        return;
+        return false;
       }
       const index = libraryCards.findIndex((item) => item.cardId === result.card.cardId);
       if (index >= 0) libraryCards[index] = result.card;
       else libraryCards.unshift(result.card);
+      selectedLibraryImages = {};
+      document.getElementById("libraryEcardCoverFile").value = "";
       fillLibraryForm(result.card);
       renderLibraryList();
       setStatus("名片資料已儲存");
+      return true;
+    }
+
+    async function uploadLibraryEcardImage() {
+      const file = document.getElementById("libraryEcardCoverFile").files[0];
+      if (!file || !currentLibraryCard) return;
+      selectedLibraryImages[activeLibraryLayout] = await compressCardImage(file, 1600);
+      renderLibraryPreview({ ...getEffectiveLayoutCard(currentLibraryCard || {}, activeLibraryLayout), ...getLibraryFormData(), imageUrl: selectedLibraryImages[activeLibraryLayout] });
+      setStatus("正在上傳名片封面...");
+      await saveLibraryCard();
     }
 
     async function shareLibraryCard() {
-      if (!currentLibraryCard?.publicUrl) {
+      const saved = await saveLibraryCard();
+      if (!saved) return;
+      const liveCard = getEffectiveLayoutCard(currentLibraryCard || {}, activeLibraryLayout);
+      const shareUrl = liveCard.publicUrl || currentLibraryCard?.publicUrl || "";
+      if (!shareUrl) {
         setStatus("這張名片尚未建立分享網址");
         return;
       }
       try {
         if (window.liff && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
-          await liff.shareTargetPicker([{ type: "text", text: libraryCardTitle(currentLibraryCard) + " 的名片\\n" + currentLibraryCard.publicUrl }]);
+          await liff.shareTargetPicker([{ type: "text", text: libraryCardTitle(currentLibraryCard) + " 的名片\\n" + shareUrl }]);
           return;
         }
       } catch (error) {}
-      await navigator.clipboard.writeText(currentLibraryCard.publicUrl);
+      await navigator.clipboard.writeText(shareUrl);
       setStatus("名片網址已複製");
     }
 
@@ -2496,6 +2678,25 @@ function renderAppHtml(env, url) {
     document.querySelectorAll("[data-library-tab]").forEach((button) => {
       button.addEventListener("click", () => showLibraryTab(button.dataset.libraryTab));
     });
+    document.querySelectorAll('input[name="library-ecard-layout"]').forEach((input) => {
+      input.addEventListener("change", (event) => {
+        saveCurrentLibraryLayoutDraft();
+        activeLibraryLayout = normalizeLayoutName(event.target.value);
+        fillLibraryForm(currentLibraryCard || {}, activeLibraryLayout);
+      });
+    });
+    ["libraryEcardImageUrl", "libraryEcardVideoUrl"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", () => {
+        renderLibraryPreview({ ...getEffectiveLayoutCard(currentLibraryCard || {}, activeLibraryLayout), ...getLibraryFormData() });
+      });
+    });
+    document.getElementById("libraryEcardVideoEnabled").addEventListener("change", () => saveCurrentLibraryLayoutDraft());
+    document.getElementById("uploadLibraryEcardImageButton").addEventListener("click", () => document.getElementById("libraryEcardCoverFile").click());
+    document.getElementById("libraryEcardCoverFile").addEventListener("change", uploadLibraryEcardImage);
+    document.getElementById("addLibraryButton").addEventListener("click", () => {
+      libraryButtons.push({ label: "新增按鈕", url: "https://", color: "#06c755" });
+      renderLibraryButtonEditor();
+    });
     document.getElementById("captureCardButton").addEventListener("click", () => document.getElementById("cardCameraFile").click());
     document.getElementById("uploadCardPhotoButton").addEventListener("click", () => document.getElementById("cardAlbumFile").click());
     document.getElementById("cardCameraFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target, "self"));
@@ -2723,30 +2924,68 @@ async function upsertLibraryCard({ env, storage, payload, origin }) {
   if (!existing || existing.status === "deleted") throw httpError(404, "Library card not found", "library_card_not_found");
   const input = { ...existing, ...normalizeBusinessCard(payload.card || {}, origin), cardId };
   if (payload.imageDataUrl) validateImageDataUrl(payload.imageDataUrl);
-  return saveLibraryCardRecord({ storage, session, input, imageDataUrl: payload.imageDataUrl || "", origin, existing });
+  return saveLibraryCardRecord({ storage, session, input, imageDataUrl: payload.imageDataUrl || "", imageDataUrls: payload.imageDataUrls || {}, origin, existing });
 }
 
-async function saveLibraryCardRecord({ storage, session, input, imageDataUrl = "", origin, existing = null }) {
+async function saveLibraryCardRecord({ storage, session, input, imageDataUrl = "", imageDataUrls = {}, origin, existing = null }) {
   const now = new Date().toISOString();
   const cardId = cleanId(input.cardId || existing?.cardId || `card-${safeTime(now)}-${randomId()}`);
   const previous = existing || (await storage.getJson(libraryCardKey(session.tenant.tenantId, session.tenantMemberId, cardId))).value || {};
   const normalized = normalizeBusinessCard({ ...previous, ...input }, origin);
   const slug = previous.publicSlug || normalized.publicSlug || createCardSlug(`lib-${cardId}`);
   const publicUrls = createCardUrls(origin, slug);
-  let imageUrl = normalized.imageUrl || previous.imageUrl || "";
-  let imageKey = normalized.imageKey || previous.imageKey || "";
-  if (imageDataUrl) {
+  const activeLayout = normalizeCardLayout(normalized.layout || input.layout || previous.layout || DEFAULT_CARD_LAYOUT);
+  let layouts = normalizeCardLayouts(previous.layouts, previous, origin);
+  const incomingLayouts = normalizeCardLayouts(normalized.layouts, normalized, origin);
+  for (const layout of CARD_LAYOUTS) {
+    if (incomingLayouts[layout]) layouts[layout] = { ...(layouts[layout] || {}), ...incomingLayouts[layout], layout };
+  }
+  layouts[activeLayout] = {
+    ...layoutBaseFromCard(previous),
+    ...(layouts[activeLayout] || {}),
+    ...layoutBaseFromCard(normalized),
+    layout: activeLayout,
+  };
+
+  const uploadMap = imageDataUrls && typeof imageDataUrls === "object" ? imageDataUrls : {};
+  const uploadedLayouts = new Set();
+  for (const layout of CARD_LAYOUTS) {
+    if (!uploadMap[layout]) continue;
+    validateImageDataUrl(uploadMap[layout]);
     const uploaded = await uploadCardAsset({
       storage,
       tenantId: session.tenant.tenantId,
-      tenantMemberId: `${session.tenantMemberId}/library/${cardId}`,
+      tenantMemberId: `${session.tenantMemberId}/library/${cardId}/${layout}`,
+      imageDataUrl: uploadMap[layout],
+      origin,
+    });
+    layouts[layout] = { ...(layouts[layout] || layoutBaseFromCard(normalized)), layout, imageUrl: uploaded.url, imageKey: uploaded.key };
+    uploadedLayouts.add(layout);
+  }
+
+  if (imageDataUrl && !uploadedLayouts.has(activeLayout)) {
+    validateImageDataUrl(imageDataUrl);
+    const uploaded = await uploadCardAsset({
+      storage,
+      tenantId: session.tenant.tenantId,
+      tenantMemberId: `${session.tenantMemberId}/library/${cardId}/${activeLayout}`,
       imageDataUrl,
       origin,
     });
-    imageUrl = uploaded.url;
-    imageKey = uploaded.key;
+    layouts[activeLayout].imageUrl = uploaded.url;
+    layouts[activeLayout].imageKey = uploaded.key;
+    uploadedLayouts.add(activeLayout);
   }
-  const layouts = normalizeCardLayouts(normalized.layouts, { ...normalized, imageUrl, imageKey }, origin);
+
+  if (normalized.imageUrl && !uploadedLayouts.has(activeLayout)) {
+    layouts[activeLayout].imageUrl = normalized.imageUrl;
+  }
+
+  for (const layout of CARD_LAYOUTS) {
+    if (!layouts[layout]) layouts[layout] = { ...layoutBaseFromCard(normalized), layout };
+    layouts[layout] = normalizeCardLayoutRecord(layouts[layout], origin, layout);
+  }
+  const standard = layouts.standard || layouts[activeLayout] || layoutBaseFromCard(normalized);
   const card = {
     ...normalized,
     tenantId: session.tenant.tenantId,
@@ -2759,8 +2998,10 @@ async function saveLibraryCardRecord({ storage, session, input, imageDataUrl = "
     publicSlug: slug,
     publicUrl: publicUrls[DEFAULT_CARD_LAYOUT],
     publicUrls,
-    imageUrl,
-    imageKey,
+    imageUrl: standard.imageUrl || normalized.imageUrl || previous.imageUrl || "",
+    imageKey: standard.imageKey || normalized.imageKey || previous.imageKey || "",
+    layout: activeLayout,
+    buttons: normalizeCardButtons(standard.buttons || normalized.buttons, standard),
     layouts,
     createdAt: previous.createdAt || now,
     updatedAt: now,
