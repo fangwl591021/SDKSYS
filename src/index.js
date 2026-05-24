@@ -114,6 +114,24 @@ export default {
         return json(await recognizeBusinessCard({ env, storage, payload, origin: url.origin }));
       }
 
+      if (url.pathname === "/api/cards/library/list" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        return json(await listLibraryCards({ env, storage, payload, origin: url.origin }));
+      }
+
+      if (url.pathname === "/api/cards/library/create" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        return json(await createLibraryCardFromScan({ env, storage, payload, origin: url.origin }));
+      }
+
+      if (url.pathname === "/api/cards/library/upsert" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        return json(await upsertLibraryCard({ env, storage, payload, origin: url.origin }));
+      }
+
       if (url.pathname === "/api/cards/upsert" && request.method === "POST") {
         const payload = await readJson(request);
         const storage = createWasabiClient(env);
@@ -911,6 +929,75 @@ function renderAppHtml(env, url) {
       color: var(--muted);
       line-height: 1.45;
     }
+    .card-list-header {
+      display: grid;
+      gap: 12px;
+      margin: 18px 0 12px;
+    }
+    .card-search {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 14px;
+      background: #fff;
+      font: inherit;
+    }
+    .library-list {
+      display: grid;
+      gap: 10px;
+    }
+    .library-card {
+      width: 100%;
+      min-height: 74px;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #e5edf5;
+      border-radius: 14px;
+      background: #fff;
+      color: var(--ink);
+      text-align: left;
+      box-shadow: 0 10px 24px rgba(25, 42, 61, .06);
+    }
+    .library-card img, .library-thumb {
+      width: 54px;
+      height: 54px;
+      border-radius: 12px;
+      object-fit: cover;
+      background: #eef2f7;
+    }
+    .library-thumb {
+      display: grid;
+      place-items: center;
+      color: #9aa8b4;
+      font-size: 24px;
+      font-weight: 900;
+    }
+    .library-card strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 16px;
+    }
+    .library-card small {
+      display: block;
+      margin-top: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .library-detail {
+      display: none;
+      margin-top: 16px;
+    }
+    .library-detail.visible { display: block; }
     code {
       padding: 2px 6px;
       border-radius: 6px;
@@ -965,6 +1052,71 @@ function renderAppHtml(env, url) {
       <div class="advice-card">
         <div style="font-size:18px;font-weight:900;margin-bottom:8px;">等待登入資料同步</div>
         <div style="color:#7890aa;line-height:1.7;">登入完成後會顯示會員、推薦與名片狀態。</div>
+      </div>
+    </section>
+
+    <section class="app-view" id="cardsView">
+      <h1 class="section-title">名片酷</h1>
+      <p>掃描別人的實體名片後，AI 會自動建立名片庫資料，方便搜尋、跟進與分享。</p>
+      <div id="libraryListSection">
+        <div class="scan-panel">
+          <div class="scan-title">▣ 掃描建立名片</div>
+          <div class="scan-actions">
+            <button class="scan-action" id="libraryCaptureButton" type="button"><span>▣</span>拍照掃描</button>
+            <button class="scan-action" id="libraryUploadButton" type="button"><span>▧</span>相簿上傳</button>
+          </div>
+        </div>
+        <input class="hidden-file" id="libraryCameraFile" type="file" accept="image/*" capture="environment">
+        <input class="hidden-file" id="libraryAlbumFile" type="file" accept="image/*">
+
+        <div class="card-list-header">
+          <input class="card-search" id="librarySearchInput" placeholder="搜尋姓名、公司或電話">
+        </div>
+        <div class="library-list" id="libraryList"></div>
+      </div>
+
+      <div class="library-detail" id="libraryDetail">
+        <button class="secondary-button" id="backToLibraryListButton" type="button" style="margin-bottom:14px;">← 回名片庫</button>
+        <h2>名片詳細資料</h2>
+        <div class="card-tabs">
+          <button class="card-tab active" type="button" data-library-tab="info">📋 聯絡資料</button>
+          <button class="card-tab" type="button" data-library-tab="edit">✏️ 編輯內容</button>
+          <button class="card-tab" type="button" data-library-tab="ecard">🪪 數位名片</button>
+        </div>
+        <div class="card-tab-panel active" id="libraryTabInfo">
+          <div class="detail-editor">
+            <div class="form-grid">
+              <div class="field"><label for="libraryName">姓名</label><input id="libraryName"></div>
+              <div class="field"><label for="libraryTitle">職稱</label><input id="libraryTitle"></div>
+              <div class="field"><label for="libraryCompany">公司</label><input id="libraryCompany"></div>
+              <div class="field"><label for="libraryPhone">電話</label><input id="libraryPhone"></div>
+              <div class="field"><label for="libraryEmail">Email</label><input id="libraryEmail"></div>
+              <div class="field"><label for="libraryWebsite">網站</label><input id="libraryWebsite"></div>
+              <div class="field"><label for="libraryAddress">地址</label><input id="libraryAddress"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-tab-panel" id="libraryTabEdit">
+          <div class="detail-editor">
+            <div class="field"><label for="libraryIntro">介紹 / 備註</label><textarea id="libraryIntro"></textarea></div>
+          </div>
+        </div>
+        <div class="card-tab-panel" id="libraryTabEcard">
+          <div class="card-preview" id="libraryPreview">
+            <img id="libraryPreviewImage" alt="">
+            <div class="card-preview-body">
+              <div class="card-preview-title" id="libraryPreviewTitle"></div>
+              <div class="card-preview-meta" id="libraryPreviewMeta"></div>
+            </div>
+          </div>
+          <div class="url-grid">
+            <label>分享網址<input id="libraryPublicUrl" type="text" readonly></label>
+          </div>
+        </div>
+        <div class="button-row">
+          <button class="secondary-button" id="saveLibraryCardButton" type="button">儲存變更</button>
+          <button class="secondary-button" id="shareLibraryCardButton" type="button">傳送名片</button>
+        </div>
       </div>
     </section>
 
@@ -1150,6 +1302,7 @@ function renderAppHtml(env, url) {
     const cardSdkEl = document.getElementById("cardSdk");
     const profileSdkEl = document.getElementById("profileSdk");
     const homeView = document.getElementById("homeView");
+    const cardsView = document.getElementById("cardsView");
     const settingsView = document.getElementById("settingsView");
     const settingsList = document.getElementById("settingsList");
     const navHome = document.getElementById("navHome");
@@ -1163,12 +1316,24 @@ function renderAppHtml(env, url) {
     let selectedCardImages = {};
     let selectedRecognizeFile = null;
     let selectedRecognizeImageDataUrl = "";
+    let scanTarget = "self";
+    let libraryCards = [];
+    let currentLibraryCard = null;
     let cardCropper = null;
     let lastCardUploadImage = "";
     let cardButtons = [];
 
     function setStatus(text) {
       statusEl.textContent = text;
+    }
+
+    function escapeHtmlClient(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     function avatarPlaceholder(name) {
@@ -1283,6 +1448,7 @@ function renderAppHtml(env, url) {
       renderDownlines(result.downlines || []);
       currentMember = result.member;
       await loadMyCard();
+      await loadLibraryCards();
       setStatus("登入完成");
     }
 
@@ -1563,6 +1729,172 @@ function renderAppHtml(env, url) {
         currentCard = result.card;
         fillCardForm(currentCard);
       }
+    }
+
+    async function loadLibraryCards() {
+      if (!currentSessionToken) return;
+      const response = await fetch("/api/cards/library/list", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionToken: currentSessionToken, storeCode: config.storeCode }),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        setStatus(result.message || result.error || "名片庫載入失敗");
+        return;
+      }
+      libraryCards = Array.isArray(result.cards) ? result.cards : [];
+      renderLibraryList();
+    }
+
+    function libraryCardTitle(card) {
+      return card?.name || card?.company || "未命名名片";
+    }
+
+    function renderLibraryList() {
+      const list = document.getElementById("libraryList");
+      const query = String(document.getElementById("librarySearchInput").value || "").trim().toLowerCase();
+      const cards = libraryCards.filter((card) => {
+        if (!query) return true;
+        return [card.name, card.company, card.title, card.phone, card.email, card.website, card.address, card.intro].join(" ").toLowerCase().includes(query);
+      });
+      if (!cards.length) {
+        list.innerHTML = '<div class="advice-card" style="text-align:center;color:#7890aa;font-weight:800;">目前沒有名片資料</div>';
+        return;
+      }
+      list.innerHTML = "";
+      for (const card of cards) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "library-card";
+        const image = card.imageUrl ? `<img src="${escapeHtmlClient(card.imageUrl)}" alt="">` : '<div class="library-thumb">名</div>';
+        const meta = [card.company, card.title, card.phone].filter(Boolean).join(" / ") || "掃描名片";
+        button.innerHTML = `${image}<span><strong>${escapeHtmlClient(libraryCardTitle(card))}</strong><small>${escapeHtmlClient(meta)}</small></span><span>›</span>`;
+        button.addEventListener("click", () => openLibraryDetail(card.cardId));
+        list.appendChild(button);
+      }
+    }
+
+    function showLibraryTab(tab) {
+      const target = ["info", "edit", "ecard"].includes(tab) ? tab : "info";
+      document.querySelectorAll("[data-library-tab]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.libraryTab === target);
+      });
+      document.getElementById("libraryTabInfo").classList.toggle("active", target === "info");
+      document.getElementById("libraryTabEdit").classList.toggle("active", target === "edit");
+      document.getElementById("libraryTabEcard").classList.toggle("active", target === "ecard");
+    }
+
+    function fillLibraryForm(card) {
+      currentLibraryCard = card || null;
+      document.getElementById("libraryName").value = card?.name || "";
+      document.getElementById("libraryTitle").value = card?.title || "";
+      document.getElementById("libraryCompany").value = card?.company || "";
+      document.getElementById("libraryPhone").value = card?.phone || "";
+      document.getElementById("libraryEmail").value = card?.email || "";
+      document.getElementById("libraryWebsite").value = card?.website || "";
+      document.getElementById("libraryAddress").value = card?.address || "";
+      document.getElementById("libraryIntro").value = card?.intro || "";
+      document.getElementById("libraryPublicUrl").value = card?.publicUrl || "";
+      document.getElementById("libraryPreviewImage").src = card?.imageUrl || "";
+      document.getElementById("libraryPreviewImage").style.display = card?.imageUrl ? "block" : "none";
+      document.getElementById("libraryPreviewTitle").textContent = libraryCardTitle(card);
+      document.getElementById("libraryPreviewMeta").textContent = [card?.company, card?.title].filter(Boolean).join(" / ");
+    }
+
+    function getLibraryFormData() {
+      return {
+        name: document.getElementById("libraryName").value.trim(),
+        title: document.getElementById("libraryTitle").value.trim(),
+        company: document.getElementById("libraryCompany").value.trim(),
+        phone: document.getElementById("libraryPhone").value.trim(),
+        email: document.getElementById("libraryEmail").value.trim(),
+        website: document.getElementById("libraryWebsite").value.trim(),
+        address: document.getElementById("libraryAddress").value.trim(),
+        intro: document.getElementById("libraryIntro").value.trim(),
+      };
+    }
+
+    function openLibraryDetail(cardId) {
+      const card = libraryCards.find((item) => item.cardId === cardId);
+      if (!card) return;
+      fillLibraryForm(card);
+      document.getElementById("libraryListSection").style.display = "none";
+      document.getElementById("libraryDetail").classList.add("visible");
+      showLibraryTab("info");
+      setTimeout(() => document.getElementById("libraryDetail").scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    }
+
+    function closeLibraryDetail() {
+      currentLibraryCard = null;
+      document.getElementById("libraryListSection").style.display = "";
+      document.getElementById("libraryDetail").classList.remove("visible");
+    }
+
+    async function saveLibraryCard() {
+      if (!currentLibraryCard || !currentSessionToken) return;
+      setStatus("正在儲存名片資料...");
+      const response = await fetch("/api/cards/library/upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionToken: currentSessionToken,
+          storeCode: config.storeCode,
+          cardId: currentLibraryCard.cardId,
+          card: { ...currentLibraryCard, ...getLibraryFormData() },
+        }),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        setStatus(result.message || result.error || "名片儲存失敗");
+        return;
+      }
+      const index = libraryCards.findIndex((item) => item.cardId === result.card.cardId);
+      if (index >= 0) libraryCards[index] = result.card;
+      else libraryCards.unshift(result.card);
+      fillLibraryForm(result.card);
+      renderLibraryList();
+      setStatus("名片資料已儲存");
+    }
+
+    async function shareLibraryCard() {
+      if (!currentLibraryCard?.publicUrl) {
+        setStatus("這張名片尚未建立分享網址");
+        return;
+      }
+      try {
+        if (window.liff && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
+          await liff.shareTargetPicker([{ type: "text", text: libraryCardTitle(currentLibraryCard) + " 的名片\\n" + currentLibraryCard.publicUrl }]);
+          return;
+        }
+      } catch (error) {}
+      await navigator.clipboard.writeText(currentLibraryCard.publicUrl);
+      setStatus("名片網址已複製");
+    }
+
+    async function createLibraryCardFromImage(imageDataUrl) {
+      if (!imageDataUrl) return;
+      setStatus("AI 正在建立名片庫資料...");
+      const response = await fetch("/api/cards/library/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionToken: currentSessionToken,
+          storeCode: config.storeCode,
+          imageDataUrl,
+        }),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        setStatus(result.message || result.error || "名片建立失敗");
+        return;
+      }
+      libraryCards.unshift(result.card);
+      renderLibraryList();
+      openLibraryDetail(result.card.cardId);
+      selectedRecognizeImageDataUrl = "";
+      selectedRecognizeFile = null;
+      setStatus("名片建立完成，請確認資料。");
     }
 
     async function recognizeImageDataUrl(imageDataUrl) {
@@ -1889,9 +2221,13 @@ function renderAppHtml(env, url) {
         if (!lastCardUploadImage) return;
         if (!window.Cropper) {
           selectedRecognizeImageDataUrl = await compressCardImage(file, 1600);
-          selectedCardImages[activeCardLayout] = selectedRecognizeImageDataUrl;
-          renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: selectedRecognizeImageDataUrl });
-          await recognizeImageDataUrl(selectedRecognizeImageDataUrl);
+          if (scanTarget === "library") {
+            await createLibraryCardFromImage(selectedRecognizeImageDataUrl);
+          } else {
+            selectedCardImages[activeCardLayout] = selectedRecognizeImageDataUrl;
+            renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: selectedRecognizeImageDataUrl });
+            await recognizeImageDataUrl(selectedRecognizeImageDataUrl);
+          }
           if (input) input.value = "";
           return;
         }
@@ -1943,10 +2279,14 @@ function renderAppHtml(env, url) {
           return;
         }
         selectedRecognizeImageDataUrl = imageDataUrl;
-        selectedCardImages[activeCardLayout] = imageDataUrl;
         closeCardCropper();
-        renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: imageDataUrl });
-        await recognizeImageDataUrl(imageDataUrl);
+        if (scanTarget === "library") {
+          await createLibraryCardFromImage(imageDataUrl);
+        } else {
+          selectedCardImages[activeCardLayout] = imageDataUrl;
+          renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: imageDataUrl });
+          await recognizeImageDataUrl(imageDataUrl);
+        }
       } finally {
         button.disabled = false;
         button.textContent = original || "確認裁切";
@@ -1956,19 +2296,23 @@ function renderAppHtml(env, url) {
       }
     }
 
-    function setRecognizeFile(file, input) {
+    function setRecognizeFile(file, input, target = "self") {
       if (!file) return;
+      scanTarget = target;
       openCardCropperFromFile(file, input);
     }
 
     function showView(name) {
       const isSettings = name === "settings";
-      homeView.classList.toggle("active", !isSettings);
+      const isCards = name === "cards";
+      homeView.classList.toggle("active", !isSettings && !isCards);
+      cardsView.classList.toggle("active", isCards);
       settingsView.classList.toggle("active", isSettings);
-      navHome.classList.toggle("active", !isSettings);
-      navCards.classList.remove("active");
+      navHome.classList.toggle("active", !isSettings && !isCards);
+      navCards.classList.toggle("active", isCards);
       navSettings.classList.toggle("active", isSettings);
       if (!isSettings) closeCardSettings();
+      if (isCards) loadLibraryCards();
     }
 
     function openCardSettings() {
@@ -2072,8 +2416,8 @@ function renderAppHtml(env, url) {
     document.getElementById("homeShareReferral").addEventListener("click", copyReferralLinkToClipboard);
     document.getElementById("openCardSettingsButton").addEventListener("click", openCardSettings);
     document.getElementById("openProfileSettingsButton").addEventListener("click", openProfileSettings);
-    document.getElementById("homeOpenCardButton").addEventListener("click", openCardSettings);
-    document.getElementById("navCards").addEventListener("click", openCardSettings);
+    document.getElementById("homeOpenCardButton").addEventListener("click", () => showView("cards"));
+    document.getElementById("navCards").addEventListener("click", () => showView("cards"));
     document.getElementById("backToSettingsButton").addEventListener("click", closeCardSettings);
     document.getElementById("backFromProfileButton").addEventListener("click", closeCardSettings);
     document.getElementById("saveProfileButton").addEventListener("click", saveMemberProfile);
@@ -2097,10 +2441,21 @@ function renderAppHtml(env, url) {
     document.getElementById("saveCardButton").addEventListener("click", () => saveBusinessCard());
     document.getElementById("saveEcardConfigButton").addEventListener("click", () => saveBusinessCard());
     document.getElementById("shareCardButton").addEventListener("click", shareBusinessCard);
+    document.getElementById("libraryCaptureButton").addEventListener("click", () => document.getElementById("libraryCameraFile").click());
+    document.getElementById("libraryUploadButton").addEventListener("click", () => document.getElementById("libraryAlbumFile").click());
+    document.getElementById("libraryCameraFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target, "library"));
+    document.getElementById("libraryAlbumFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target, "library"));
+    document.getElementById("librarySearchInput").addEventListener("input", renderLibraryList);
+    document.getElementById("backToLibraryListButton").addEventListener("click", closeLibraryDetail);
+    document.getElementById("saveLibraryCardButton").addEventListener("click", saveLibraryCard);
+    document.getElementById("shareLibraryCardButton").addEventListener("click", shareLibraryCard);
+    document.querySelectorAll("[data-library-tab]").forEach((button) => {
+      button.addEventListener("click", () => showLibraryTab(button.dataset.libraryTab));
+    });
     document.getElementById("captureCardButton").addEventListener("click", () => document.getElementById("cardCameraFile").click());
     document.getElementById("uploadCardPhotoButton").addEventListener("click", () => document.getElementById("cardAlbumFile").click());
-    document.getElementById("cardCameraFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target));
-    document.getElementById("cardAlbumFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target));
+    document.getElementById("cardCameraFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target, "self"));
+    document.getElementById("cardAlbumFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target, "self"));
     document.getElementById("cropCancelButton").addEventListener("click", closeCardCropper);
     document.getElementById("cropConfirmButton").addEventListener("click", confirmCardCrop);
     document.getElementById("cropZoomOutButton").addEventListener("click", () => zoomCardCropper(-0.12));
@@ -2108,7 +2463,7 @@ function renderAppHtml(env, url) {
     document.getElementById("cropResetButton").addEventListener("click", resetCardCropper);
     document.getElementById("uploadEcardImageButton").addEventListener("click", () => document.getElementById("ecardCoverFile").click());
     document.getElementById("ecardCoverFile").addEventListener("change", uploadEcardImage);
-    document.getElementById("cardImageFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target));
+    document.getElementById("cardImageFile").addEventListener("change", (event) => setRecognizeFile(event.target.files[0], event.target, "self"));
     document.querySelectorAll('input[name="ecard-layout"]').forEach((input) => {
       input.addEventListener("change", (event) => {
         saveCurrentLayoutDraft();
@@ -2289,6 +2644,96 @@ async function recognizeBusinessCard({ env, storage, payload, origin }) {
   return { ok: true, card };
 }
 
+async function listLibraryCards({ env, storage, payload, origin }) {
+  const session = await getSessionContext({ env, storage, payload });
+  const prefix = libraryCardPrefix(session.tenant.tenantId, session.tenantMemberId);
+  const listed = await storage.list(prefix, 500);
+  const cards = [];
+  for (const item of listed.list || []) {
+    if (!item.key.endsWith(".json")) continue;
+    const relativeKey = storage.relativeKey(item.key);
+    const card = (await storage.getJson(relativeKey)).value;
+    if (card && card.status !== "deleted") cards.push(publicLibraryCard(card, origin));
+  }
+  cards.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+  return { ok: true, cards };
+}
+
+async function createLibraryCardFromScan({ env, storage, payload, origin }) {
+  const session = await getSessionContext({ env, storage, payload });
+  assertString(payload.imageDataUrl, "imageDataUrl");
+  assertSecret(env.OPENAI_API_KEY, "OPENAI_API_KEY");
+  validateImageDataUrl(payload.imageDataUrl);
+  const extracted = await callOpenAICardOcr(env, payload.imageDataUrl);
+  const card = normalizeBusinessCard(extracted, origin);
+  card.sourceType = "scanned_contact";
+  card.status = "active";
+  return saveLibraryCardRecord({ storage, session, input: card, imageDataUrl: payload.imageDataUrl, origin });
+}
+
+async function upsertLibraryCard({ env, storage, payload, origin }) {
+  const session = await getSessionContext({ env, storage, payload });
+  const cardId = cleanId(payload.cardId || payload.card?.cardId || "");
+  if (!cardId) throw httpError(400, "cardId is required", "card_id_required");
+  const existing = (await storage.getJson(libraryCardKey(session.tenant.tenantId, session.tenantMemberId, cardId))).value;
+  if (!existing || existing.status === "deleted") throw httpError(404, "Library card not found", "library_card_not_found");
+  const input = { ...existing, ...normalizeBusinessCard(payload.card || {}, origin), cardId };
+  if (payload.imageDataUrl) validateImageDataUrl(payload.imageDataUrl);
+  return saveLibraryCardRecord({ storage, session, input, imageDataUrl: payload.imageDataUrl || "", origin, existing });
+}
+
+async function saveLibraryCardRecord({ storage, session, input, imageDataUrl = "", origin, existing = null }) {
+  const now = new Date().toISOString();
+  const cardId = cleanId(input.cardId || existing?.cardId || `card-${safeTime(now)}-${randomId()}`);
+  const previous = existing || (await storage.getJson(libraryCardKey(session.tenant.tenantId, session.tenantMemberId, cardId))).value || {};
+  const normalized = normalizeBusinessCard({ ...previous, ...input }, origin);
+  const slug = previous.publicSlug || normalized.publicSlug || createCardSlug(`lib-${cardId}`);
+  const publicUrls = createCardUrls(origin, slug);
+  let imageUrl = normalized.imageUrl || previous.imageUrl || "";
+  let imageKey = normalized.imageKey || previous.imageKey || "";
+  if (imageDataUrl) {
+    const uploaded = await uploadCardAsset({
+      storage,
+      tenantId: session.tenant.tenantId,
+      tenantMemberId: `${session.tenantMemberId}/library/${cardId}`,
+      imageDataUrl,
+      origin,
+    });
+    imageUrl = uploaded.url;
+    imageKey = uploaded.key;
+  }
+  const layouts = normalizeCardLayouts(normalized.layouts, { ...normalized, imageUrl, imageKey }, origin);
+  const card = {
+    ...normalized,
+    tenantId: session.tenant.tenantId,
+    ownerTenantMemberId: session.tenantMemberId,
+    ownerUserId: session.userId,
+    cardId,
+    cardKind: "library",
+    sourceType: cleanText(input.sourceType || previous.sourceType || "scanned_contact", 60),
+    status: input.status || previous.status || "active",
+    publicSlug: slug,
+    publicUrl: publicUrls[DEFAULT_CARD_LAYOUT],
+    publicUrls,
+    imageUrl,
+    imageKey,
+    layouts,
+    createdAt: previous.createdAt || now,
+    updatedAt: now,
+  };
+  await storage.putJson(libraryCardKey(session.tenant.tenantId, session.tenantMemberId, cardId), card);
+  await storage.putJson(`card-index/public-slugs/${slug}.json`, {
+    tenantId: session.tenant.tenantId,
+    tenantMemberId: session.tenantMemberId,
+    cardId,
+    cardKind: "library",
+    publicSlug: slug,
+    status: "published",
+    updatedAt: now,
+  });
+  return { ok: true, card: publicLibraryCard(card, origin) };
+}
+
 async function upsertBusinessCard({ env, storage, payload, origin }) {
   const session = await getSessionContext({ env, storage, payload });
   const now = new Date().toISOString();
@@ -2417,8 +2862,16 @@ async function renderPublicCardHtml(storage, slug, origin, layout = DEFAULT_CARD
   if (!index || index.status !== "published") {
     return renderPublicCardShell(null, origin);
   }
-  const card = await readBusinessCard(storage, index.tenantId, index.tenantMemberId, origin);
+  const card = index.cardKind === "library" && index.cardId
+    ? await readLibraryCard(storage, index.tenantId, index.tenantMemberId, index.cardId, origin)
+    : await readBusinessCard(storage, index.tenantId, index.tenantMemberId, origin);
   return renderPublicCardShell(card, origin, normalizeCardLayout(layout), liffId);
+}
+
+async function readLibraryCard(storage, tenantId, ownerTenantMemberId, cardId, origin) {
+  const card = (await storage.getJson(libraryCardKey(tenantId, ownerTenantMemberId, cardId))).value;
+  if (!card || card.status === "deleted") return null;
+  return publicLibraryCard(card, origin);
 }
 
 function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffId = "") {
@@ -3442,6 +3895,52 @@ function publicMember(member) {
     pictureUrl: member.pictureUrl || null,
     profile: normalizeMemberProfile(member.profile || {}),
     lastActiveAt: member.lastActiveAt,
+  };
+}
+
+function libraryCardPrefix(tenantId, ownerTenantMemberId) {
+  return `card-library/${tenantId}/${ownerTenantMemberId}/`;
+}
+
+function libraryCardKey(tenantId, ownerTenantMemberId, cardId) {
+  return `${libraryCardPrefix(tenantId, ownerTenantMemberId)}${cleanId(cardId)}.json`;
+}
+
+function publicLibraryCard(card, origin = "") {
+  const publicUrls = { ...createCardUrls(origin, card.publicSlug), ...(card.publicUrls || {}) };
+  publicUrls.standard = publicUrls.standard || publicUrls.poster;
+  publicUrls.full = publicUrls.full || publicUrls.free || publicUrls.classic;
+  publicUrls.free = publicUrls.full;
+  publicUrls.classic = publicUrls.full;
+  publicUrls.square = publicUrls.square || publicUrls.links;
+  const layouts = normalizeCardLayouts(card.layouts, card, origin);
+  return {
+    cardId: card.cardId,
+    cardKind: "library",
+    sourceType: card.sourceType || "scanned_contact",
+    publicSlug: card.publicSlug,
+    publicUrl: card.publicUrl || publicUrls[DEFAULT_CARD_LAYOUT],
+    publicUrls,
+    name: card.name || "",
+    title: card.title || "",
+    company: card.company || "",
+    phone: card.phone || "",
+    email: card.email || "",
+    website: normalizeUrl(card.website),
+    address: card.address || "",
+    intro: card.intro || "",
+    imageUrl: normalizeImageUrl(card.imageUrl),
+    imageKey: card.imageKey || "",
+    shareLabel: normalizeShareLabel(card.shareLabel),
+    shareColor: card.shareColor || "#ef4444",
+    layout: normalizeCardLayout(card.layout),
+    buttons: normalizeCardButtons(card.buttons, card),
+    videoEnabled: Boolean(card.videoEnabled),
+    videoUrl: normalizeUrl(card.videoUrl),
+    layouts,
+    status: card.status || "active",
+    createdAt: card.createdAt,
+    updatedAt: card.updatedAt,
   };
 }
 
