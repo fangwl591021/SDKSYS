@@ -671,13 +671,6 @@ function renderAppHtml(env, url) {
           </div>
           <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
           <input id="ecardCoverFile" type="file" accept="image/*" hidden>
-          <div class="card-preview" id="cardPreview">
-            <img id="cardPreviewImage" alt="">
-            <div class="card-preview-body">
-              <div class="card-preview-title" id="cardPreviewTitle"></div>
-              <div class="card-preview-meta" id="cardPreviewMeta"></div>
-            </div>
-          </div>
           <div class="ecard-panel">
             <div class="ecard-block">
               <div class="ecard-title">▦ 名片版型</div>
@@ -701,6 +694,13 @@ function renderAppHtml(env, url) {
               </div>
               <input id="ecardVideoUrl" class="file-picker" placeholder="影片網址，例如 https://...mp4">
               <p class="ecard-note">開啟後分享名片會使用 LINE Flex video hero，封面圖片會作為縮圖。</p>
+            </div>
+          </div>
+          <div class="card-preview" id="cardPreview">
+            <img id="cardPreviewImage" alt="">
+            <div class="card-preview-body">
+              <div class="card-preview-title" id="cardPreviewTitle"></div>
+              <div class="card-preview-meta" id="cardPreviewMeta"></div>
             </div>
           </div>
           <div class="detail-editor" id="detailEditor">
