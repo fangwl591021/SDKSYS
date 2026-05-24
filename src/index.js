@@ -1639,7 +1639,11 @@ function renderAppHtml(env, url) {
       layout = normalizeLayoutName(layout);
       const base = baseCardFields(card);
       const override = card && card.layouts && card.layouts[layout] ? card.layouts[layout] : {};
-      return { ...base, ...override, layout, publicUrls: card?.publicUrls || {}, publicUrl: card?.publicUrls?.[layout] || card?.publicUrl || "" };
+      const merged = { ...base, ...override };
+      if (!merged.imageUrl && base.imageUrl) merged.imageUrl = base.imageUrl;
+      if (!merged.imageKey && base.imageKey) merged.imageKey = base.imageKey;
+      if ((!Array.isArray(merged.buttons) || !merged.buttons.length) && Array.isArray(base.buttons)) merged.buttons = base.buttons;
+      return { ...merged, layout, publicUrls: card?.publicUrls || {}, publicUrl: card?.publicUrls?.[layout] || card?.publicUrl || "" };
     }
 
     function saveCurrentLayoutDraft() {
@@ -2981,8 +2985,12 @@ async function saveLibraryCardRecord({ storage, session, input, imageDataUrl = "
     layouts[activeLayout].imageUrl = normalized.imageUrl;
   }
 
+  const sharedImageUrl = layouts[activeLayout]?.imageUrl || normalized.imageUrl || previous.imageUrl || "";
+  const sharedImageKey = layouts[activeLayout]?.imageKey || normalized.imageKey || previous.imageKey || "";
   for (const layout of CARD_LAYOUTS) {
     if (!layouts[layout]) layouts[layout] = { ...layoutBaseFromCard(normalized), layout };
+    if (!layouts[layout].imageUrl && sharedImageUrl) layouts[layout].imageUrl = sharedImageUrl;
+    if (!layouts[layout].imageKey && sharedImageKey) layouts[layout].imageKey = sharedImageKey;
     layouts[layout] = normalizeCardLayoutRecord(layouts[layout], origin, layout);
   }
   const standard = layouts.standard || layouts[activeLayout] || layoutBaseFromCard(normalized);
@@ -3597,14 +3605,16 @@ function getLayoutCard(card, layout) {
   layout = normalizeCardLayout(layout);
   const base = layoutBaseFromCard(card);
   const override = card?.layouts?.[layout] || {};
+  const merged = { ...base, ...override };
+  if (!merged.imageUrl && base.imageUrl) merged.imageUrl = base.imageUrl;
+  if (!merged.imageKey && base.imageKey) merged.imageKey = base.imageKey;
   return {
     ...card,
-    ...base,
-    ...override,
+    ...merged,
     layout,
     publicUrl: card?.publicUrls?.[layout] || card?.publicUrl || "",
     publicUrls: card?.publicUrls || {},
-    buttons: normalizeCardButtons(override.buttons || base.buttons, { ...base, ...override }),
+    buttons: normalizeCardButtons(merged.buttons || base.buttons, merged),
   };
 }
 
