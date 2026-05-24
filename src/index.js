@@ -455,6 +455,51 @@ function renderAppHtml(env, url) {
       color: #dc2626;
       border-color: #ffe0e5;
     }
+    .cropper {
+      display: none;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+    }
+    .cropper.visible { display: grid; }
+    .crop-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 800 / 533;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #111827;
+    }
+    .crop-stage.square { aspect-ratio: 1 / 1; }
+    .crop-stage img {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      max-width: none;
+      transform-origin: center;
+      user-select: none;
+      pointer-events: none;
+    }
+    .crop-controls {
+      display: grid;
+      gap: 8px;
+    }
+    .crop-controls label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .crop-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
     .card-preview {
       display: none;
       margin-top: 14px;
@@ -529,6 +574,18 @@ function renderAppHtml(env, url) {
           <h2>我的名片</h2>
           <p>拍照或上傳名片，AI 只抽欄位，圖片與資料都存到 Wasabi。</p>
           <input class="file-picker" id="cardImageFile" type="file" accept="image/*" capture="environment">
+          <div class="cropper" id="cardCropper">
+            <div class="crop-stage" id="cropStage"><img id="cropImage" alt=""></div>
+            <div class="crop-controls">
+              <label>縮放<input id="cropZoom" type="range" min="1" max="3" step="0.01" value="1"></label>
+              <label>左右<input id="cropX" type="range" min="-100" max="100" step="1" value="0"></label>
+              <label>上下<input id="cropY" type="range" min="-100" max="100" step="1" value="0"></label>
+            </div>
+            <div class="crop-actions">
+              <button class="secondary-button" id="applyCropButton" type="button">套用裁切</button>
+              <button class="secondary-button" id="cancelCropButton" type="button">取消裁切</button>
+            </div>
+          </div>
           <div class="button-row">
             <button class="secondary-button" id="recognizeCardButton" type="button">AI 辨識</button>
             <button class="secondary-button" id="saveCardButton" type="button">儲存名片</button>
@@ -593,7 +650,9 @@ function renderAppHtml(env, url) {
     let currentSessionToken = "";
     let currentMember = null;
     let currentCard = null;
-    let selectedCardImage = "";
+    let activeCardLayout = "standard";
+    let selectedCardImages = {};
+    let cropState = null;
     let cardButtons = [];
 
     function setStatus(text) {
@@ -714,6 +773,97 @@ function renderAppHtml(env, url) {
       return output;
     }
 
+    function normalizeLayoutName(value) {
+      const aliases = { poster: "standard", classic: "free", links: "square" };
+      const layout = String(value || "standard").toLowerCase();
+      return aliases[layout] || (["standard", "free", "square"].includes(layout) ? layout : "standard");
+    }
+
+    function cropSpecForLayout(layout) {
+      return normalizeLayoutName(layout) === "square"
+        ? { width: 800, height: 800, className: "square" }
+        : { width: 800, height: 533, className: "" };
+    }
+
+    function updateCropPreview() {
+      if (!cropState) return;
+      const img = document.getElementById("cropImage");
+      const stage = document.getElementById("cropStage");
+      const spec = cropSpecForLayout(activeCardLayout);
+      stage.classList.toggle("square", spec.className === "square");
+      const box = stage.getBoundingClientRect();
+      const coverScale = Math.max(box.width / cropState.width, box.height / cropState.height);
+      const zoom = Number(document.getElementById("cropZoom").value || 1);
+      const scale = coverScale * zoom;
+      const x = Number(document.getElementById("cropX").value || 0);
+      const y = Number(document.getElementById("cropY").value || 0);
+      img.style.width = Math.round(cropState.width * scale) + "px";
+      img.style.height = Math.round(cropState.height * scale) + "px";
+      img.style.transform = "translate(calc(-50% + " + x + "px), calc(-50% + " + y + "px))";
+    }
+
+    async function openCropper(file) {
+      const src = await readFileAsDataUrl(file);
+      const probe = new Image();
+      await new Promise((resolve, reject) => {
+        probe.onload = resolve;
+        probe.onerror = reject;
+        probe.src = src;
+      });
+      cropState = { src, width: probe.naturalWidth || probe.width, height: probe.naturalHeight || probe.height };
+      document.getElementById("cropImage").src = src;
+      document.getElementById("cropZoom").value = "1";
+      document.getElementById("cropX").value = "0";
+      document.getElementById("cropY").value = "0";
+      document.getElementById("cardCropper").classList.add("visible");
+      updateCropPreview();
+      setStatus("請先裁切版型圖片，再儲存名片。");
+    }
+
+    async function applyCrop() {
+      if (!cropState) return;
+      const spec = cropSpecForLayout(activeCardLayout);
+      const stage = document.getElementById("cropStage").getBoundingClientRect();
+      const coverScale = Math.max(stage.width / cropState.width, stage.height / cropState.height);
+      const zoom = Number(document.getElementById("cropZoom").value || 1);
+      const scale = coverScale * zoom;
+      const offsetX = Number(document.getElementById("cropX").value || 0);
+      const offsetY = Number(document.getElementById("cropY").value || 0);
+      const visibleW = stage.width / scale;
+      const visibleH = stage.height / scale;
+      const centerX = cropState.width / 2 - offsetX / scale;
+      const centerY = cropState.height / 2 - offsetY / scale;
+      let sx = centerX - visibleW / 2;
+      let sy = centerY - visibleH / 2;
+      sx = Math.max(0, Math.min(cropState.width - visibleW, sx));
+      sy = Math.max(0, Math.min(cropState.height - visibleH, sy));
+
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = cropState.src;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = spec.width;
+      canvas.height = spec.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, sx, sy, visibleW, visibleH, 0, 0, canvas.width, canvas.height);
+      selectedCardImages[activeCardLayout] = canvas.toDataURL("image/jpeg", 0.88);
+      document.getElementById("cardCropper").classList.remove("visible");
+      cropState = null;
+      renderCardPreview({ ...getEffectiveLayoutCard(currentCard, activeCardLayout), ...getCardFormData(), imageUrl: selectedCardImages[activeCardLayout] });
+      setStatus("裁切完成，請儲存名片。");
+    }
+
+    function cancelCrop() {
+      cropState = null;
+      document.getElementById("cardCropper").classList.remove("visible");
+      document.getElementById("cardImageFile").value = "";
+    }
+
     function getCardFormData() {
       return {
         name: document.getElementById("cardName").value.trim(),
@@ -731,36 +881,77 @@ function renderAppHtml(env, url) {
       };
     }
 
-    function fillCardForm(card) {
+    function baseCardFields(card) {
       card = card || {};
-      document.getElementById("cardName").value = card.name || "";
-      document.getElementById("cardTitle").value = card.title || "";
-      document.getElementById("cardCompany").value = card.company || "";
-      document.getElementById("cardPhone").value = card.phone || "";
-      document.getElementById("cardEmail").value = card.email || "";
-      document.getElementById("cardWebsite").value = card.website || "";
-      document.getElementById("cardAddress").value = card.address || "";
-      document.getElementById("cardIntro").value = card.intro || "";
-      document.getElementById("cardShareLabel").value = card.shareLabel || "分享";
-      document.getElementById("cardShareColor").value = card.shareColor || "#ef4444";
-      document.getElementById("cardLayout").value = card.layout || "standard";
-      cardButtons = Array.isArray(card.buttons) ? card.buttons.slice(0, 6) : defaultCardButtons(card);
+      return {
+        name: card.name || "",
+        title: card.title || "",
+        company: card.company || "",
+        phone: card.phone || "",
+        email: card.email || "",
+        website: card.website || "",
+        address: card.address || "",
+        intro: card.intro || "",
+        shareLabel: card.shareLabel || "分享",
+        shareColor: card.shareColor || "#ef4444",
+        buttons: Array.isArray(card.buttons) ? card.buttons : [],
+        imageUrl: card.imageUrl || "",
+        imageKey: card.imageKey || "",
+      };
+    }
+
+    function getEffectiveLayoutCard(card, layout) {
+      layout = normalizeLayoutName(layout);
+      const base = baseCardFields(card);
+      const override = card && card.layouts && card.layouts[layout] ? card.layouts[layout] : {};
+      return { ...base, ...override, layout, publicUrls: card?.publicUrls || {}, publicUrl: card?.publicUrls?.[layout] || card?.publicUrl || "" };
+    }
+
+    function saveCurrentLayoutDraft() {
+      if (!currentCard) return;
+      const layout = normalizeLayoutName(activeCardLayout);
+      currentCard.layouts = { ...(currentCard.layouts || {}) };
+      currentCard.layouts[layout] = {
+        ...(currentCard.layouts[layout] || {}),
+        ...getCardFormData(),
+        layout,
+      };
+      if (selectedCardImages[layout]) currentCard.layouts[layout].imageUrl = selectedCardImages[layout];
+    }
+
+    function fillCardForm(card, layout) {
+      card = card || {};
+      activeCardLayout = normalizeLayoutName(layout || card.layout || activeCardLayout || "standard");
+      const view = getEffectiveLayoutCard(card, activeCardLayout);
+      document.getElementById("cardName").value = view.name || "";
+      document.getElementById("cardTitle").value = view.title || "";
+      document.getElementById("cardCompany").value = view.company || "";
+      document.getElementById("cardPhone").value = view.phone || "";
+      document.getElementById("cardEmail").value = view.email || "";
+      document.getElementById("cardWebsite").value = view.website || "";
+      document.getElementById("cardAddress").value = view.address || "";
+      document.getElementById("cardIntro").value = view.intro || "";
+      document.getElementById("cardShareLabel").value = view.shareLabel || "分享";
+      document.getElementById("cardShareColor").value = view.shareColor || "#ef4444";
+      document.getElementById("cardLayout").value = activeCardLayout;
+      cardButtons = Array.isArray(view.buttons) && view.buttons.length ? view.buttons.slice(0, 6) : defaultCardButtons(view);
       renderCardButtonEditor();
       const urls = card.publicUrls || {};
       document.getElementById("publicCardUrlStandard").value = urls.standard || urls.poster || card.publicUrl || "";
       document.getElementById("publicCardUrlFree").value = urls.free || urls.classic || card.publicUrl || "";
       document.getElementById("publicCardUrlSquare").value = urls.square || urls.links || card.publicUrl || "";
-      renderCardPreview(card);
+      renderCardPreview(view);
     }
 
     function renderCardPreview(card) {
       const preview = document.getElementById("cardPreview");
-      if (!card || (!card.name && !card.company && !card.imageUrl)) {
+      const previewImage = selectedCardImages[activeCardLayout] || card?.imageUrl || "";
+      if (!card || (!card.name && !card.company && !previewImage)) {
         preview.classList.remove("visible");
         return;
       }
-      document.getElementById("cardPreviewImage").src = card.imageUrl || "";
-      document.getElementById("cardPreviewImage").style.display = card.imageUrl ? "block" : "none";
+      document.getElementById("cardPreviewImage").src = previewImage;
+      document.getElementById("cardPreviewImage").style.display = previewImage ? "block" : "none";
       document.getElementById("cardPreviewTitle").textContent = card.name || "未命名名片";
       document.getElementById("cardPreviewMeta").textContent = [card.company, card.title, card.phone, card.email].filter(Boolean).join(" / ");
       preview.classList.add("visible");
@@ -865,12 +1056,16 @@ function renderAppHtml(env, url) {
 
     async function recognizeSelectedCard() {
       const file = document.getElementById("cardImageFile").files[0];
-      if (!file) {
+      const imageDataUrl = selectedCardImages[activeCardLayout];
+      if (!imageDataUrl && !file) {
         setStatus("請先拍照或上傳名片圖片");
         return;
       }
-      setStatus("正在壓縮圖片...");
-      selectedCardImage = await compressCardImage(file);
+      if (!imageDataUrl && file) {
+        await openCropper(file);
+        setStatus("請先套用裁切，再按 AI 辨識。");
+        return;
+      }
       setStatus("AI 正在辨識名片...");
       const response = await fetch("/api/cards/recognize", {
         method: "POST",
@@ -879,7 +1074,7 @@ function renderAppHtml(env, url) {
           idToken: currentIdToken,
           sessionToken: currentSessionToken,
           storeCode: config.storeCode,
-          imageDataUrl: selectedCardImage,
+          imageDataUrl,
         }),
       });
       const result = await response.json();
@@ -887,14 +1082,27 @@ function renderAppHtml(env, url) {
         setStatus(result.message || result.error || "名片辨識失敗");
         return;
       }
-      currentCard = { ...(currentCard || {}), ...(result.card || {}) };
-      fillCardForm(currentCard);
+      currentCard = currentCard || {};
+      currentCard.layouts = { ...(currentCard.layouts || {}) };
+      currentCard.layouts[activeCardLayout] = {
+        ...getEffectiveLayoutCard(currentCard, activeCardLayout),
+        ...(result.card || {}),
+        imageUrl: selectedCardImages[activeCardLayout] || getEffectiveLayoutCard(currentCard, activeCardLayout).imageUrl,
+      };
+      fillCardForm(currentCard, activeCardLayout);
       setStatus("辨識完成，可以編輯後儲存");
     }
 
     async function saveBusinessCard() {
       if (!currentSessionToken) return;
-      const card = { ...(currentCard || {}), ...getCardFormData() };
+      const pendingFile = document.getElementById("cardImageFile").files[0];
+      if (pendingFile && !selectedCardImages[activeCardLayout]) {
+        setStatus("請先套用裁切，再儲存名片。");
+        return;
+      }
+      saveCurrentLayoutDraft();
+      const layout = activeCardLayout;
+      const card = { ...(currentCard || {}), ...getCardFormData(), layout };
       setStatus("正在儲存名片...");
       const response = await fetch("/api/cards/upsert", {
         method: "POST",
@@ -904,7 +1112,8 @@ function renderAppHtml(env, url) {
           sessionToken: currentSessionToken,
           storeCode: config.storeCode,
           card,
-          imageDataUrl: selectedCardImage || undefined,
+          imageDataUrl: selectedCardImages[layout] || undefined,
+          imageDataUrls: selectedCardImages,
         }),
       });
       const result = await response.json();
@@ -913,8 +1122,9 @@ function renderAppHtml(env, url) {
         return;
       }
       currentCard = result.card;
-      selectedCardImage = "";
-      fillCardForm(currentCard);
+      selectedCardImages = {};
+      document.getElementById("cardImageFile").value = "";
+      fillCardForm(currentCard, layout);
       setStatus("名片已儲存");
     }
 
@@ -988,7 +1198,7 @@ function renderAppHtml(env, url) {
           type: "image",
           url: card.imageUrl,
           size: "full",
-          aspectRatio: "20:13",
+          aspectRatio: "800:533",
           aspectMode: "cover",
           action: { type: "uri", uri: url },
         };
@@ -1001,7 +1211,9 @@ function renderAppHtml(env, url) {
     }
 
     async function shareBusinessCard() {
-      const liveCard = { ...(currentCard || {}), ...getCardFormData() };
+      saveCurrentLayoutDraft();
+      const liveCard = { ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), publicUrls: currentCard?.publicUrls || {} };
+      if (selectedCardImages[activeCardLayout]) liveCard.imageUrl = selectedCardImages[activeCardLayout];
       const url = selectedPublicCardUrl(liveCard);
       if (!url) {
         setStatus("請先儲存名片");
@@ -1068,6 +1280,21 @@ function renderAppHtml(env, url) {
     document.getElementById("recognizeCardButton").addEventListener("click", recognizeSelectedCard);
     document.getElementById("saveCardButton").addEventListener("click", saveBusinessCard);
     document.getElementById("shareCardButton").addEventListener("click", shareBusinessCard);
+    document.getElementById("cardImageFile").addEventListener("change", async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) await openCropper(file);
+    });
+    document.getElementById("cropZoom").addEventListener("input", updateCropPreview);
+    document.getElementById("cropX").addEventListener("input", updateCropPreview);
+    document.getElementById("cropY").addEventListener("input", updateCropPreview);
+    document.getElementById("applyCropButton").addEventListener("click", applyCrop);
+    document.getElementById("cancelCropButton").addEventListener("click", cancelCrop);
+    document.getElementById("cardLayout").addEventListener("change", (event) => {
+      saveCurrentLayoutDraft();
+      activeCardLayout = normalizeLayoutName(event.target.value);
+      cancelCrop();
+      fillCardForm(currentCard || {}, activeCardLayout);
+    });
     document.getElementById("addCardButton").addEventListener("click", () => {
       cardButtons.push({ label: "新增按鈕", url: "https://", color: "#06c755" });
       renderCardButtonEditor();
@@ -1215,10 +1442,36 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
   const input = normalizeBusinessCard(payload.card || {}, origin);
   const slug = existing.publicSlug || createCardSlug(session.member.memberNo);
   const publicUrls = createCardUrls(origin, slug);
-  let imageUrl = existing.imageUrl || "";
-  let imageKey = existing.imageKey || "";
+  const activeLayout = normalizeCardLayout(input.layout || payload.card?.layout || DEFAULT_CARD_LAYOUT);
+  const layouts = normalizeCardLayouts(existing.layouts, existing, origin);
+  const incomingLayouts = normalizeCardLayouts(input.layouts, input, origin);
+  for (const layout of CARD_LAYOUTS) {
+    if (incomingLayouts[layout]) layouts[layout] = { ...(layouts[layout] || {}), ...incomingLayouts[layout], layout };
+  }
+  layouts[activeLayout] = {
+    ...layoutBaseFromCard(existing),
+    ...(layouts[activeLayout] || {}),
+    ...layoutBaseFromCard(input),
+    layout: activeLayout,
+  };
 
-  if (payload.imageDataUrl) {
+  const imageDataUrls = payload.imageDataUrls && typeof payload.imageDataUrls === "object" ? payload.imageDataUrls : {};
+  const uploadedLayouts = new Set();
+  for (const layout of CARD_LAYOUTS) {
+    if (!imageDataUrls[layout]) continue;
+    validateImageDataUrl(imageDataUrls[layout]);
+    const uploaded = await uploadCardAsset({
+      storage,
+      tenantId: session.tenant.tenantId,
+      tenantMemberId: session.tenantMemberId,
+      imageDataUrl: imageDataUrls[layout],
+      origin,
+    });
+    layouts[layout] = { ...(layouts[layout] || layoutBaseFromCard(input)), layout, imageUrl: uploaded.url, imageKey: uploaded.key };
+    uploadedLayouts.add(layout);
+  }
+
+  if (payload.imageDataUrl && !uploadedLayouts.has(activeLayout)) {
     validateImageDataUrl(payload.imageDataUrl);
     const uploaded = await uploadCardAsset({
       storage,
@@ -1227,11 +1480,17 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
       imageDataUrl: payload.imageDataUrl,
       origin,
     });
-    imageUrl = uploaded.url;
-    imageKey = uploaded.key;
+    layouts[activeLayout].imageUrl = uploaded.url;
+    layouts[activeLayout].imageKey = uploaded.key;
   } else if (input.imageUrl) {
-    imageUrl = input.imageUrl;
+    layouts[activeLayout].imageUrl = input.imageUrl;
   }
+
+  for (const layout of CARD_LAYOUTS) {
+    if (!layouts[layout]) layouts[layout] = { ...layoutBaseFromCard(input), layout };
+    layouts[layout] = normalizeCardLayoutRecord(layouts[layout], origin, layout);
+  }
+  const standard = layouts.standard || layouts[activeLayout] || layoutBaseFromCard(input);
 
   const card = {
     tenantId: session.tenant.tenantId,
@@ -1240,24 +1499,21 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
     publicSlug: slug,
     publicUrl: publicUrls[DEFAULT_CARD_LAYOUT],
     publicUrls,
-    name: input.name || session.lineProfile.name || "",
-    title: input.title || "",
-    company: input.company || session.tenant.name || "",
-    phone: input.phone || "",
-    email: input.email || "",
-    website: normalizeUrl(input.website),
-    address: input.address || "",
-    intro: input.intro || "",
-    shareLabel: input.shareLabel || "分享",
-    shareColor: input.shareColor || "#ef4444",
-    layout: input.layout || DEFAULT_CARD_LAYOUT,
-    buttons: normalizeCardButtons(input.buttons, {
-      phone: input.phone,
-      address: input.address,
-      website: normalizeUrl(input.website),
-    }),
-    imageUrl,
-    imageKey,
+    name: standard.name || input.name || session.lineProfile.name || "",
+    title: standard.title || input.title || "",
+    company: standard.company || input.company || session.tenant.name || "",
+    phone: standard.phone || input.phone || "",
+    email: standard.email || input.email || "",
+    website: normalizeUrl(standard.website || input.website),
+    address: standard.address || input.address || "",
+    intro: standard.intro || input.intro || "",
+    shareLabel: standard.shareLabel || input.shareLabel || "分享",
+    shareColor: standard.shareColor || input.shareColor || "#ef4444",
+    layout: activeLayout,
+    buttons: normalizeCardButtons(standard.buttons || input.buttons, standard),
+    imageUrl: standard.imageUrl || "",
+    imageKey: standard.imageKey || "",
+    layouts,
     status: "published",
     updatedAt: now,
     createdAt: existing.createdAt || now,
@@ -1282,6 +1538,7 @@ async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
   publicUrls.standard = publicUrls.standard || publicUrls.poster;
   publicUrls.free = publicUrls.free || publicUrls.classic;
   publicUrls.square = publicUrls.square || publicUrls.links;
+  const layouts = normalizeCardLayouts(card.layouts, card, origin);
   return {
     ...card,
     publicUrl: card.publicUrl || publicUrls[DEFAULT_CARD_LAYOUT],
@@ -1290,6 +1547,7 @@ async function readBusinessCard(storage, tenantId, tenantMemberId, origin) {
     shareColor: card.shareColor || "#ef4444",
     layout: normalizeCardLayout(card.layout),
     buttons: normalizeCardButtons(card.buttons, card),
+    layouts,
   };
 }
 
@@ -1307,6 +1565,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Card not found</title></head><body style="font-family:system-ui;padding:32px;">Card not found</body></html>`;
   }
   layout = normalizeCardLayout(layout);
+  card = getLayoutCard(card, layout);
   const title = card.name || "Business Card";
   const meta = [card.company, card.title].filter(Boolean).join(" / ");
   const phoneHref = card.phone ? `tel:${card.phone.replace(/[^0-9+]/g, "")}` : "";
@@ -1362,7 +1621,8 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .actions { display:grid; gap:10px; }
     .actions a { display:block; text-decoration:none; text-align:center; padding:13px 16px; border-radius:8px; font-weight:900; color:white; }
     .layout-standard main { width:min(430px, calc(100% - 24px)); }
-    .layout-standard .hero { aspect-ratio:20/13; }
+    .layout-standard .hero { aspect-ratio:800/533; }
+    .layout-standard .hero img { object-fit:contain; background:#fff; }
     .layout-standard .body { padding:24px 26px 12px; text-align:center; }
     .layout-standard h1 { font-size:30px; margin-bottom:12px; }
     .layout-standard .intro { margin:14px 0 0; text-align:left; }
@@ -1382,6 +1642,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     .layout-square .card-shell { padding-bottom:22px; }
     .layout-square .square-frame { width:100%; aspect-ratio:1/1; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
     .layout-square .hero { min-height:0; }
+    .layout-square .hero img { object-fit:cover; }
     .layout-square .profile { padding:18px 26px; text-align:center; }
     .layout-square h1 { font-size:28px; margin-bottom:8px; }
     .layout-square .intro { margin-top:10px; color:#607080; }
@@ -1517,7 +1778,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
           type: "image",
           url: card.imageUrl,
           size: "full",
-          aspectRatio: "20:13",
+          aspectRatio: "800:533",
           aspectMode: "cover",
           action: { type: "uri", uri: shareConfig.url },
         };
@@ -1632,6 +1893,67 @@ function normalizeBusinessCard(source, origin) {
     layout: normalizeCardLayout(source.layout),
     buttons: normalizeCardButtons(source.buttons, source),
     imageUrl: source.imageUrl && String(source.imageUrl).startsWith(origin) ? String(source.imageUrl) : "",
+    imageKey: cleanText(source.imageKey, 500),
+    layouts: normalizeCardLayouts(source.layouts, source, origin),
+  };
+}
+
+function layoutBaseFromCard(source) {
+  source = source || {};
+  return {
+    name: cleanText(source.name, 80),
+    title: cleanText(source.title, 100),
+    company: cleanText(source.company, 120),
+    phone: cleanText(source.phone, 60),
+    email: cleanText(source.email, 120),
+    website: normalizeUrl(cleanText(source.website, 240)),
+    address: cleanText(source.address, 240),
+    intro: cleanText(source.intro, 600),
+    shareLabel: cleanText(source.shareLabel, 20) || "分享",
+    shareColor: safeCssColor(source.shareColor, "#ef4444"),
+    buttons: normalizeCardButtons(source.buttons, source),
+    imageUrl: cleanText(source.imageUrl, 500),
+    imageKey: cleanText(source.imageKey, 500),
+  };
+}
+
+function normalizeCardLayouts(layouts, fallback = {}, origin = "") {
+  const normalized = {};
+  const source = layouts && typeof layouts === "object" ? layouts : {};
+  for (const layout of CARD_LAYOUTS) {
+    const record = source[layout] || source[Object.entries(CARD_LAYOUT_ALIASES).find(([, target]) => target === layout)?.[0]] || null;
+    if (record) normalized[layout] = normalizeCardLayoutRecord(record, origin, layout);
+  }
+  if (!Object.keys(normalized).length && fallback && typeof fallback === "object") {
+    const base = normalizeCardLayoutRecord(fallback, origin, DEFAULT_CARD_LAYOUT);
+    for (const layout of CARD_LAYOUTS) normalized[layout] = { ...base, layout };
+  }
+  return normalized;
+}
+
+function normalizeCardLayoutRecord(source, origin = "", layout = DEFAULT_CARD_LAYOUT) {
+  const base = layoutBaseFromCard(source);
+  const imageUrl = cleanText(source?.imageUrl, 500);
+  return {
+    ...base,
+    layout: normalizeCardLayout(layout || source?.layout),
+    imageUrl: imageUrl && (!origin || imageUrl.startsWith(origin) || imageUrl.startsWith("data:image/")) ? imageUrl : "",
+    imageKey: cleanText(source?.imageKey, 500),
+  };
+}
+
+function getLayoutCard(card, layout) {
+  layout = normalizeCardLayout(layout);
+  const base = layoutBaseFromCard(card);
+  const override = card?.layouts?.[layout] || {};
+  return {
+    ...card,
+    ...base,
+    ...override,
+    layout,
+    publicUrl: card?.publicUrls?.[layout] || card?.publicUrl || "",
+    publicUrls: card?.publicUrls || {},
+    buttons: normalizeCardButtons(override.buttons || base.buttons, { ...base, ...override }),
   };
 }
 
