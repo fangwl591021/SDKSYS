@@ -1767,9 +1767,27 @@ function renderAppHtml(env, url) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "library-card";
-        const image = card.imageUrl ? `<img src="${escapeHtmlClient(card.imageUrl)}" alt="">` : '<div class="library-thumb">名</div>';
+        if (card.imageUrl) {
+          const image = document.createElement("img");
+          image.src = card.imageUrl;
+          image.alt = "";
+          button.appendChild(image);
+        } else {
+          const thumb = document.createElement("div");
+          thumb.className = "library-thumb";
+          thumb.textContent = "名";
+          button.appendChild(thumb);
+        }
         const meta = [card.company, card.title, card.phone].filter(Boolean).join(" / ") || "掃描名片";
-        button.innerHTML = `${image}<span><strong>${escapeHtmlClient(libraryCardTitle(card))}</strong><small>${escapeHtmlClient(meta)}</small></span><span>›</span>`;
+        const body = document.createElement("span");
+        const title = document.createElement("strong");
+        title.textContent = libraryCardTitle(card);
+        const sub = document.createElement("small");
+        sub.textContent = meta;
+        body.append(title, sub);
+        const arrow = document.createElement("span");
+        arrow.textContent = "›";
+        button.append(body, arrow);
         button.addEventListener("click", () => openLibraryDetail(card.cardId));
         list.appendChild(button);
       }
