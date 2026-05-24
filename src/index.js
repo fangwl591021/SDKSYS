@@ -900,6 +900,12 @@ function renderAppHtml(env, url) {
       return normalizeLayoutName(checked ? checked.value : activeCardLayout);
     }
 
+    function cleanImageUrlInput(value) {
+      const text = String(value || "").trim();
+      if (!text || text.startsWith("data:image/")) return "";
+      return text;
+    }
+
     function setSelectedLayout(layout) {
       const normalized = normalizeLayoutName(layout);
       const input = document.querySelector('input[name="ecard-layout"][value="' + normalized + '"]');
@@ -920,7 +926,7 @@ function renderAppHtml(env, url) {
         shareLabel: document.getElementById("cardShareLabel").value.trim(),
         shareColor: document.getElementById("cardShareColor").value,
         layout: getSelectedLayout(),
-        imageUrl: document.getElementById("ecardImageUrl").value.trim(),
+        imageUrl: cleanImageUrlInput(document.getElementById("ecardImageUrl").value),
         videoEnabled: document.getElementById("ecardVideoEnabled").checked,
         videoUrl: document.getElementById("ecardVideoUrl").value.trim(),
         buttons: getCardButtons(),
@@ -965,7 +971,6 @@ function renderAppHtml(env, url) {
         ...getCardFormData(),
         layout,
       };
-      if (selectedCardImages[layout]) currentCard.layouts[layout].imageUrl = selectedCardImages[layout];
     }
 
     function fillCardForm(card, layout) {
@@ -982,7 +987,7 @@ function renderAppHtml(env, url) {
       document.getElementById("cardIntro").value = view.intro || "";
       document.getElementById("cardShareLabel").value = view.shareLabel || "分享";
       document.getElementById("cardShareColor").value = view.shareColor || "#ef4444";
-      document.getElementById("ecardImageUrl").value = selectedCardImages[activeCardLayout] || view.imageUrl || "";
+      document.getElementById("ecardImageUrl").value = view.imageUrl || "";
       document.getElementById("ecardVideoEnabled").checked = Boolean(view.videoEnabled);
       document.getElementById("ecardVideoUrl").value = view.videoUrl || "";
       cardButtons = Array.isArray(view.buttons) && view.buttons.length ? view.buttons.slice(0, 6) : defaultCardButtons(view);
@@ -1137,9 +1142,8 @@ function renderAppHtml(env, url) {
       currentCard.layouts[activeCardLayout] = {
         ...getEffectiveLayoutCard(currentCard, activeCardLayout),
         ...(result.card || {}),
-        imageUrl: imageDataUrl,
+        imageUrl: getEffectiveLayoutCard(currentCard, activeCardLayout).imageUrl,
       };
-      document.getElementById("ecardImageUrl").value = imageDataUrl;
       fillCardForm(currentCard, activeCardLayout);
       setStatus("辨識完成，請確認資料後儲存。");
     }
@@ -1180,7 +1184,6 @@ function renderAppHtml(env, url) {
       const file = document.getElementById("ecardCoverFile").files[0];
       if (!file) return;
       selectedCardImages[activeCardLayout] = await compressCardImage(file, 1600);
-      document.getElementById("ecardImageUrl").value = selectedCardImages[activeCardLayout];
       renderCardPreview({ ...getEffectiveLayoutCard(currentCard || {}, activeCardLayout), ...getCardFormData(), imageUrl: selectedCardImages[activeCardLayout] });
       setStatus("正在上傳封面圖片...");
       const saved = await saveBusinessCard({ quiet: true });
@@ -1191,6 +1194,24 @@ function renderAppHtml(env, url) {
       return (text || " ").slice(0, limit);
     }
 
+    function appendShareMode(url) {
+      if (!url) return "";
+      try {
+        const parsed = new URL(url);
+        parsed.searchParams.set("share", "1");
+        return parsed.toString();
+      } catch (error) {
+        return url + (url.includes("?") ? "&" : "?") + "share=1";
+      }
+    }
+
+    function flexHttpsUri(value, fallback) {
+      const uri = String(value || "").trim();
+      if (/^https:\\/\\//i.test(uri) || /^tel:/i.test(uri)) return uri;
+      if (/^[\\w.-]+\\.[a-z]{2,}(\\/.*)?$/i.test(uri)) return "https://" + uri;
+      return fallback || "";
+    }
+
     function buildCardFlexMessage(card, url) {
       card = card || {};
       const name = flexText(card.name, "我的名片", 80);
@@ -1198,10 +1219,11 @@ function renderAppHtml(env, url) {
       const intro = flexText(card.intro || meta || url, "點擊查看完整名片", 180);
       const shareLabel = flexText(card.shareLabel, "分享", 16);
       const shareColor = card.shareColor || "#ef4444";
+      const shareActionUrl = appendShareMode(url);
       const buttons = [
         { label: "查看名片", url, color: "#06C755" },
         ...getCardButtons(),
-      ].slice(0, 4);
+      ].map((button, index) => ({ ...button, url: flexHttpsUri(button.url, index === 0 ? url : "") })).filter((button) => button.url).slice(0, 4);
       const bubble = {
         type: "bubble",
         size: card.layout === "full" ? "giga" : "mega",
@@ -1222,7 +1244,7 @@ function renderAppHtml(env, url) {
               paddingStart: "14px",
               paddingEnd: "14px",
               contents: [{ type: "text", text: shareLabel, color: "#ffffff", weight: "bold", size: "sm", align: "center", flex: 0 }],
-              action: { type: "uri", uri: url },
+              action: { type: "uri", uri: shareActionUrl || url },
             },
           ],
         },
@@ -1299,7 +1321,10 @@ function renderAppHtml(env, url) {
           setStatus("已開啟 LINE 分享");
           return;
         }
-      } catch (error) {}
+        setStatus("LINE 目前不支援開啟分享名單，請從 LINE LIFF 內開啟。");
+      } catch (error) {
+        setStatus("LINE 分享失敗：" + (error.message || error));
+      }
       try {
         await navigator.clipboard.writeText(url);
         setStatus("名片連結已複製");
@@ -1562,7 +1587,10 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
     });
     layouts[activeLayout].imageUrl = uploaded.url;
     layouts[activeLayout].imageKey = uploaded.key;
-  } else if (input.imageUrl) {
+    uploadedLayouts.add(activeLayout);
+  }
+
+  if (input.imageUrl && !uploadedLayouts.has(activeLayout)) {
     layouts[activeLayout].imageUrl = input.imageUrl;
   }
 
@@ -1803,8 +1831,27 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       return (text || " ").slice(0, limit);
     }
 
+    function appendPublicShareMode(url) {
+      if (!url) return "";
+      try {
+        const parsed = new URL(url);
+        parsed.searchParams.set("share", "1");
+        return parsed.toString();
+      } catch (error) {
+        return url + (url.includes("?") ? "&" : "?") + "share=1";
+      }
+    }
+
+    function publicFlexHttpsUri(value, fallback) {
+      const uri = String(value || "").trim();
+      if (/^https:\\/\\//i.test(uri) || /^tel:/i.test(uri)) return uri;
+      if (/^[\\w.-]+\\.[a-z]{2,}(\\/.*)?$/i.test(uri)) return "https://" + uri;
+      return fallback || "";
+    }
+
     function buildPublicShareMessage() {
       const card = shareConfig.card || {};
+      const shareActionUrl = appendPublicShareMode(shareConfig.url);
       const name = publicFlexText(card.name, "我的名片", 80);
       const meta = publicFlexText(card.meta, "SDK 名片王", 100);
       const shareLabel = publicFlexText(card.shareLabel, "分享", 16);
@@ -1812,7 +1859,10 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       const buttons = [
         { label: "查看名片", url: shareConfig.url, color: "#06C755" },
         ...(Array.isArray(card.buttons) ? card.buttons : []),
-      ].filter((button) => button && button.label && button.url).slice(0, 4);
+      ].filter((button) => button && button.label && button.url)
+        .map((button, index) => ({ ...button, url: publicFlexHttpsUri(button.url, index === 0 ? shareConfig.url : "") }))
+        .filter((button) => button.url)
+        .slice(0, 4);
       const bubble = {
         type: "bubble",
         size: "${layout === "full" ? "giga" : "mega"}",
@@ -1833,7 +1883,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
               paddingStart: "14px",
               paddingEnd: "14px",
               contents: [{ type: "text", text: shareLabel, color: "#ffffff", weight: "bold", size: "sm", align: "center", flex: 0 }],
-              action: { type: "uri", uri: shareConfig.url },
+              action: { type: "uri", uri: shareActionUrl || shareConfig.url },
             },
           ],
         },
@@ -1904,6 +1954,9 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     }
 
     document.getElementById("publicShareButton")?.addEventListener("click", sharePublicCard);
+    if (new URLSearchParams(location.search).get("share") === "1") {
+      setTimeout(sharePublicCard, 350);
+    }
   </script>
 </body>
 </html>`;
@@ -1996,7 +2049,7 @@ function normalizeBusinessCard(source, origin) {
     shareColor: safeCssColor(source.shareColor, "#ef4444"),
     layout: normalizeCardLayout(source.layout),
     buttons: normalizeCardButtons(source.buttons, source),
-    imageUrl: normalizeUrl(cleanText(source.imageUrl, 500)),
+    imageUrl: normalizeImageUrl(source.imageUrl),
     imageKey: cleanText(source.imageKey, 500),
     videoEnabled: Boolean(source.videoEnabled),
     videoUrl: normalizeUrl(cleanText(source.videoUrl, 500)),
@@ -2018,7 +2071,7 @@ function layoutBaseFromCard(source) {
     shareLabel: cleanText(source.shareLabel, 20) || "分享",
     shareColor: safeCssColor(source.shareColor, "#ef4444"),
     buttons: normalizeCardButtons(source.buttons, source),
-    imageUrl: cleanText(source.imageUrl, 500),
+    imageUrl: normalizeImageUrl(source.imageUrl),
     imageKey: cleanText(source.imageKey, 500),
     videoEnabled: Boolean(source.videoEnabled),
     videoUrl: normalizeUrl(cleanText(source.videoUrl, 500)),
@@ -2042,11 +2095,11 @@ function normalizeCardLayouts(layouts, fallback = {}, origin = "") {
 
 function normalizeCardLayoutRecord(source, origin = "", layout = DEFAULT_CARD_LAYOUT) {
   const base = layoutBaseFromCard(source);
-  const imageUrl = normalizeUrl(cleanText(source?.imageUrl, 500));
+  const imageUrl = normalizeImageUrl(source?.imageUrl);
   return {
     ...base,
     layout: normalizeCardLayout(layout || source?.layout),
-    imageUrl: imageUrl && (/^https:\/\//i.test(imageUrl) || imageUrl.startsWith("data:image/")) ? imageUrl : "",
+    imageUrl,
     imageKey: cleanText(source?.imageKey, 500),
     videoEnabled: Boolean(source?.videoEnabled),
     videoUrl: normalizeUrl(cleanText(source?.videoUrl, 500)),
@@ -2172,6 +2225,13 @@ function normalizeUrl(value) {
   if (!url) return "";
   if (/^(https?:|mailto:|tel:|line:)/i.test(url)) return url;
   return `https://${url}`;
+}
+
+function normalizeImageUrl(value) {
+  const raw = cleanText(value, 500);
+  if (!raw || /^data:image\//i.test(raw)) return "";
+  const url = normalizeUrl(raw);
+  return /^https:\/\//i.test(url) ? url : "";
 }
 
 async function getReferralDownlines(storage, tenantId, parentTenantMemberId) {
