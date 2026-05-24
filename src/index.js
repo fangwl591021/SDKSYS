@@ -903,7 +903,7 @@ async function upsertBusinessCard({ env, storage, payload, origin }) {
     company: input.company || session.tenant.name || "",
     phone: input.phone || "",
     email: input.email || "",
-    website: input.website || "",
+    website: normalizeUrl(input.website),
     address: input.address || "",
     intro: input.intro || "",
     imageUrl,
@@ -953,6 +953,7 @@ function renderPublicCardShell(card, origin) {
   const emailHref = card.email ? `mailto:${card.email}` : "";
   const websiteHref = normalizeUrl(card.website);
   const mapHref = card.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}` : "";
+  const websiteText = websiteHref ? websiteHref.replace(/^https?:\/\//i, "") : "";
   return `<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -963,33 +964,58 @@ function renderPublicCardShell(card, origin) {
   <meta property="og:description" content="${escapeHtml(meta || card.intro || "")}">
   ${card.imageUrl ? `<meta property="og:image" content="${escapeHtml(card.imageUrl)}">` : ""}
   <style>
-    body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2933; background:#f3f7f8; }
-    main { width:min(460px, calc(100% - 28px)); margin:0 auto; padding:24px 0; }
-    .card { background:white; border:1px solid #d8e0e8; border-radius:8px; overflow:hidden; box-shadow:0 18px 44px rgba(25,42,61,.12); }
-    .hero { width:100%; max-height:280px; object-fit:cover; display:block; background:#eef3f5; }
-    .body { padding:22px; }
-    h1 { margin:0; font-size:32px; letter-spacing:0; line-height:1.1; }
-    .meta { margin-top:8px; color:#607080; line-height:1.5; }
-    .intro { margin-top:18px; white-space:pre-line; line-height:1.7; color:#364756; }
-    .actions { display:grid; gap:10px; margin-top:20px; }
-    a { display:block; text-decoration:none; text-align:center; padding:12px 14px; border-radius:8px; font-weight:800; background:#06c755; color:white; }
-    a.secondary { background:#233142; }
+    body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2933; background:#eef3f5; }
+    main { width:min(760px, calc(100% - 28px)); margin:0 auto; padding:24px 0; }
+    .physical { aspect-ratio: 1.78 / 1; background:white; border:1px solid #d8e0e8; border-radius:8px; overflow:hidden; box-shadow:0 18px 44px rgba(25,42,61,.12); display:grid; grid-template-columns:1fr 38%; min-height:320px; }
+    .info { padding:34px; display:flex; flex-direction:column; justify-content:space-between; border-left:8px solid #06c755; }
+    .brand { color:#607080; font-weight:700; letter-spacing:0; }
+    h1 { margin:8px 0 8px; font-size:40px; letter-spacing:0; line-height:1.05; }
+    .meta { color:#364756; font-size:18px; line-height:1.45; }
+    .intro { margin-top:18px; white-space:pre-line; line-height:1.65; color:#607080; }
+    .contacts { display:grid; gap:7px; margin-top:20px; color:#364756; font-size:15px; }
+    .contacts a { color:#1f2933; text-decoration:none; word-break:break-word; }
+    .visual { background:#f8fbff; display:flex; align-items:center; justify-content:center; padding:18px; }
+    .visual img { width:100%; height:100%; max-height:100%; object-fit:contain; border-radius:6px; background:white; box-shadow:0 10px 28px rgba(25,42,61,.10); }
+    .visual-empty { width:120px; height:120px; border-radius:8px; background:#06c755; color:white; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:900; }
+    .actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:16px; }
+    .actions a { display:block; text-decoration:none; text-align:center; padding:12px 14px; border-radius:8px; font-weight:800; background:#06c755; color:white; }
+    .actions a.secondary { background:#233142; }
+    @media (max-width: 680px) {
+      .physical { aspect-ratio:auto; grid-template-columns:1fr; }
+      .visual { order:-1; min-height:220px; }
+      .info { padding:24px; }
+      h1 { font-size:32px; }
+      .actions { grid-template-columns:1fr; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <section class="card">
-      ${card.imageUrl ? `<img class="hero" src="${escapeHtml(card.imageUrl)}" alt="">` : ""}
-      <div class="body">
-        <h1>${escapeHtml(title)}</h1>
-        <div class="meta">${escapeHtml(meta)}</div>
-        <div class="intro">${escapeHtml(card.intro || "")}</div>
-        <div class="actions">
-          ${phoneHref ? `<a href="${escapeHtml(phoneHref)}">撥打電話</a>` : ""}
-          ${emailHref ? `<a class="secondary" href="${escapeHtml(emailHref)}">寄送 Email</a>` : ""}
-          ${websiteHref ? `<a class="secondary" href="${escapeHtml(websiteHref)}">開啟網站</a>` : ""}
-          ${mapHref ? `<a class="secondary" href="${escapeHtml(mapHref)}">查看地址</a>` : ""}
+    <section class="physical">
+      <div class="info">
+        <div>
+          <div class="brand">${escapeHtml(card.company || "SDKSYS")}</div>
+          <h1>${escapeHtml(title)}</h1>
+          <div class="meta">${escapeHtml(card.title || "")}</div>
+          <div class="intro">${escapeHtml(card.intro || "")}</div>
         </div>
+        <div>
+          <div class="contacts">
+            ${card.phone ? `<a href="${escapeHtml(phoneHref)}">${escapeHtml(card.phone)}</a>` : ""}
+            ${card.email ? `<a href="${escapeHtml(emailHref)}">${escapeHtml(card.email)}</a>` : ""}
+            ${websiteHref ? `<a href="${escapeHtml(websiteHref)}">${escapeHtml(websiteText)}</a>` : ""}
+            ${card.address ? `<a href="${escapeHtml(mapHref)}">${escapeHtml(card.address)}</a>` : ""}
+          </div>
+          <div class="actions">
+            ${phoneHref ? `<a href="${escapeHtml(phoneHref)}">撥打電話</a>` : ""}
+            ${emailHref ? `<a class="secondary" href="${escapeHtml(emailHref)}">Email</a>` : ""}
+            ${websiteHref ? `<a class="secondary" href="${escapeHtml(websiteHref)}">網站</a>` : ""}
+            ${mapHref ? `<a class="secondary" href="${escapeHtml(mapHref)}">地址</a>` : ""}
+          </div>
+        </div>
+      </div>
+      <div class="visual">
+        ${card.imageUrl ? `<img src="${escapeHtml(card.imageUrl)}" alt="">` : `<div class="visual-empty">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</div>`}
       </div>
     </section>
   </main>
@@ -1077,7 +1103,7 @@ function normalizeBusinessCard(source, origin) {
     company: cleanText(source.company, 120),
     phone: cleanText(source.phone, 60),
     email: cleanText(source.email, 120),
-    website: cleanText(source.website, 240),
+    website: normalizeUrl(cleanText(source.website, 240)),
     address: cleanText(source.address, 240),
     intro: cleanText(source.intro, 600),
     imageUrl: source.imageUrl && String(source.imageUrl).startsWith(origin) ? String(source.imageUrl) : "",
