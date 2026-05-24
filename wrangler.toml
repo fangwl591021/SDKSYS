@@ -1,0 +1,9 @@
+name = "sdksys"
+main = "src/index.js"
+compatibility_date = "2026-05-24"
+
+[vars]
+WASABI_BUCKET = "tonyuse"
+WASABI_REGION = "us-west-1"
+WASABI_ENDPOINT = "https://s3.us-west-1.wasabisys.com"
+WASABI_BASE_PREFIX = "tonyuse/sdksys"
