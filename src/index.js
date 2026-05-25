@@ -96,6 +96,13 @@ export default {
         return json(result);
       }
 
+      if (url.pathname === "/api/auth/session" && request.method === "POST") {
+        const payload = await readJson(request);
+        const storage = createWasabiClient(env);
+        const result = await handleSessionCheck({ env, storage, payload });
+        return json(result);
+      }
+
       if (url.pathname === "/api/member/profile/upsert" && request.method === "POST") {
         const payload = await readJson(request);
         const storage = createWasabiClient(env);
@@ -1431,6 +1438,7 @@ function renderAppHtml(env, url) {
     let selectedRecognizeImageDataUrl = "";
     let scanTarget = "self";
     let libraryCards = [];
+    let libraryCardsLoaded = false;
     let currentLibraryCard = null;
     let cardCropper = null;
     let lastCardUploadImage = "";
@@ -1591,10 +1599,53 @@ function renderAppHtml(env, url) {
           liff.login({ redirectUri: location.href });
           return;
         }
+        if (await restoreSession()) return;
         await submitIdToken();
       } catch (error) {
         setStatus(error.message || "LIFF 初始化失敗");
       }
+    }
+
+    async function restoreSession() {
+      let token = "";
+      try {
+        token = sessionStorage.getItem("SDKSYS_SESSION_" + config.storeCode) || "";
+      } catch (error) {}
+      if (!token) return false;
+      setStatus("正在檢查登入狀態...");
+      try {
+        const response = await fetch("/api/auth/session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionToken: token, storeCode: config.storeCode }),
+        });
+        const result = await response.json();
+        if (!result.ok) {
+          try { sessionStorage.removeItem("SDKSYS_SESSION_" + config.storeCode); } catch (error) {}
+          return false;
+        }
+        currentSessionToken = token;
+        hydrateLoginState(result);
+        setStatus("登入完成");
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function hydrateLoginState(result) {
+      document.getElementById("memberNo").textContent = result.member.memberNo;
+      document.getElementById("myReferralCode").textContent = result.member.referralCode;
+      document.getElementById("attribution").textContent = result.attribution?.result || result.attribution?.status || "active";
+      fillProfileForm(result.member.profile || {});
+      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.displayName || result.member.memberNo || "會員";
+      document.getElementById("homeRole").textContent = result.member.role === "admin" ? "總管" : "會員";
+      renderProfileAvatar(result.member);
+      const referralLink = buildReferralLink(result.member.referralCode);
+      document.getElementById("referralLink").value = referralLink.toString();
+      renderReferralQr(referralLink.toString());
+      renderDownlines(result.downlines || []);
+      currentMember = result.member;
     }
 
     async function submitIdToken() {
@@ -1604,7 +1655,7 @@ function renderAppHtml(env, url) {
         return;
       }
       currentIdToken = idToken;
-      setStatus("正在建立會員身份...");
+      setStatus("正在檢查登入狀態...");
       const clientLineProfile = await getClientLineProfile();
       const response = await fetch("/api/auth/line-login", {
         method: "POST",
@@ -1629,20 +1680,7 @@ function renderAppHtml(env, url) {
       try {
         sessionStorage.setItem("SDKSYS_SESSION_" + config.storeCode, currentSessionToken);
       } catch (error) {}
-      document.getElementById("memberNo").textContent = result.member.memberNo;
-      document.getElementById("myReferralCode").textContent = result.member.referralCode;
-      document.getElementById("attribution").textContent = result.attribution.result || result.attribution.status;
-      fillProfileForm(result.member.profile || {});
-      document.getElementById("homeName").textContent = result.member.profile?.name || result.member.displayName || result.member.memberNo || "會員";
-      document.getElementById("homeRole").textContent = result.member.role === "admin" ? "總管" : "會員";
-      renderProfileAvatar(result.member);
-      const referralLink = buildReferralLink(result.member.referralCode);
-      document.getElementById("referralLink").value = referralLink.toString();
-      renderReferralQr(referralLink.toString());
-      renderDownlines(result.downlines || []);
-      currentMember = result.member;
-      await loadMyCard();
-      await loadLibraryCards();
+      hydrateLoginState(result);
       setStatus("登入完成");
     }
 
@@ -1916,6 +1954,7 @@ function renderAppHtml(env, url) {
 
     async function loadMyCard() {
       if (!currentSessionToken) return;
+      if (currentCard) return;
       const response = await fetch("/api/cards/me", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1930,6 +1969,7 @@ function renderAppHtml(env, url) {
 
     async function loadLibraryCards() {
       if (!currentSessionToken) return;
+      if (libraryCardsLoaded) return;
       const response = await fetch("/api/cards/library/list", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1941,6 +1981,7 @@ function renderAppHtml(env, url) {
         return;
       }
       libraryCards = Array.isArray(result.cards) ? result.cards : [];
+      libraryCardsLoaded = true;
       renderLibraryList();
     }
 
@@ -2686,6 +2727,7 @@ function renderAppHtml(env, url) {
       memberEl.classList.remove("visible");
       profileSdkEl.classList.remove("visible");
       cardSdkEl.classList.add("visible");
+      loadMyCard();
       showCardEditorTab("contact");
       setTimeout(() => cardSdkEl.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
@@ -2952,6 +2994,17 @@ async function handleLineLogin({ env, storage, payload }) {
       userId,
     }),
     sessionExpiresAt: new Date(Date.now() + sessionMaxAgeMs()).toISOString(),
+  };
+}
+
+async function handleSessionCheck({ env, storage, payload }) {
+  const session = await getSessionContext({ env, storage, payload });
+  return {
+    ok: true,
+    tenant: publicTenant(session.tenant),
+    member: publicMember(session.member),
+    attribution: { result: "session", status: "active" },
+    downlines: [],
   };
 }
 
