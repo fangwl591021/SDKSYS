@@ -46,6 +46,11 @@ export default {
       }
 
       if (url.pathname === "/app" && request.method === "GET") {
+        const liffStateRoute = parseLiffStateCardRoute(url);
+        if (liffStateRoute) {
+          const storage = createWasabiClient(env);
+          return html(await renderPublicCardHtml(storage, liffStateRoute.slug, url.origin, liffStateRoute.layout, env.LINE_LIFF_ID || ""));
+        }
         return html(renderAppHtml(env, url));
       }
 
@@ -3413,6 +3418,10 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     * { box-sizing:border-box; }
     body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2933; background:#eef3f5; }
     main { width:min(760px, calc(100% - 28px)); margin:0 auto; padding:24px 0; }
+    .share-status { position:fixed; left:50%; bottom:22px; z-index:20; transform:translateX(-50%); display:none; align-items:center; gap:10px; max-width:min(420px, calc(100% - 28px)); padding:10px 16px; border-radius:999px; color:#fff; background:rgba(15,23,42,.94); font-weight:900; box-shadow:0 18px 38px rgba(15,23,42,.25); }
+    .share-status.visible { display:flex; }
+    .share-status::before { content:""; width:16px; height:16px; border:2px solid rgba(255,255,255,.45); border-top-color:#fff; border-radius:999px; animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
     .card-shell { position:relative; background:white; border:1px solid #d8e0e8; border-radius:20px; overflow:hidden; box-shadow:0 18px 44px rgba(25,42,61,.12); }
     .share-head { min-height:52px; display:flex; justify-content:flex-end; align-items:center; padding:10px 12px; }
     .share-badge { appearance:none; border:0; display:inline-flex; flex:0 0 auto; width:auto; max-width:max-content; align-items:center; justify-content:center; min-height:32px; border-radius:999px; padding:6px 16px; color:white; font:inherit; font-weight:900; line-height:1.2; white-space:nowrap; text-decoration:none; background:${escapeHtml(shareColor)}; cursor:pointer; }
@@ -3512,8 +3521,24 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       </section>
     `}
   </main>
+  <div class="share-status" id="shareStatus">正在開啟 LINE 分享...</div>
   <script>
     const shareConfig = ${JSON.stringify(sharePayload)};
+    const shareStatus = document.getElementById("shareStatus");
+
+    function setPublicShareStatus(text) {
+      if (!shareStatus) return;
+      shareStatus.textContent = text || "正在開啟 LINE 分享...";
+      shareStatus.classList.add("visible");
+    }
+
+    function closeLiffWindowSoon() {
+      setTimeout(() => {
+        try {
+          if (window.liff && liff.closeWindow) liff.closeWindow();
+        } catch (error) {}
+      }, 450);
+    }
 
     function publicFlexText(value, fallback, limit = 120) {
       const text = String(value || fallback || " ").replace(/\\s+/g, " ").trim();
@@ -3540,6 +3565,20 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
         return true;
       } catch (error) {
         return false;
+      }
+    }
+
+    function getPublicShareParam(name) {
+      const params = new URLSearchParams(location.search);
+      const direct = params.get(name);
+      if (direct !== null) return direct;
+      const state = params.get("liff.state");
+      if (!state) return null;
+      try {
+        const stateUrl = new URL(state.startsWith("/") ? state : "/" + state, location.origin);
+        return stateUrl.searchParams.get(name);
+      } catch (error) {
+        return null;
       }
     }
 
@@ -3640,24 +3679,27 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
     }
 
     async function sharePublicCard() {
+      setPublicShareStatus("正在開啟 LINE 分享...");
       try {
         if (shareConfig.liffId && window.liff) {
           await liff.init({ liffId: shareConfig.liffId });
           if (liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
             await liff.shareTargetPicker([buildPublicShareMessage()]);
+            setPublicShareStatus("分享完成，正在關閉...");
+            closeLiffWindowSoon();
             return;
           }
         }
       } catch (error) {}
-      const params = new URLSearchParams(location.search);
-      if (shareConfig.liffId && params.get("viaLiff") !== "1") {
+      if (shareConfig.liffId && getPublicShareParam("viaLiff") !== "1") {
         if (openPublicShareInLiff()) return;
       }
+      setPublicShareStatus("無法開啟通訊錄，改用網址分享...");
       location.href = "https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(shareConfig.url || location.href);
     }
 
     document.getElementById("publicShareButton")?.addEventListener("click", sharePublicCard);
-    if (new URLSearchParams(location.search).get("share") === "1") {
+    if (getPublicShareParam("share") === "1") {
       setTimeout(sharePublicCard, 350);
     }
   </script>
@@ -3832,6 +3874,18 @@ function parseCardRoute(pathname) {
     slug: cleanSlug(parts[0] || ""),
     layout: normalizeCardLayout(parts[1] || DEFAULT_CARD_LAYOUT),
   };
+}
+
+function parseLiffStateCardRoute(url) {
+  const raw = url.searchParams.get("liff.state") || "";
+  if (!raw) return null;
+  try {
+    const stateUrl = new URL(raw.startsWith("/") ? raw : `/${raw}`, url.origin);
+    if (!stateUrl.pathname.startsWith("/card/")) return null;
+    return parseCardRoute(stateUrl.pathname);
+  } catch {
+    return null;
+  }
 }
 
 function normalizeCardLayout(value) {
