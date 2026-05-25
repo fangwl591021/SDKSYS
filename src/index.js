@@ -1841,7 +1841,6 @@ function renderAppHtml(env, url) {
       const phone = cleanPhoneForLink(card && card.phone);
       if (phone) buttons.push({ label: "行動電話", url: "tel:" + phone, color: "#9b1c0c" });
       if (card && card.address) buttons.push({ label: "店家地址", url: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(card.address), color: "#1f2937" });
-      if (card && card.website) buttons.push({ label: "開啟網站", url: card.website, color: "#06c755" });
       return buttons.length ? buttons.slice(0, 6) : [
         { label: "加LINE好友", url: "https://line.me/R/ti/p/", color: "#06c755" },
         { label: "店家地址", url: "https://www.google.com/maps", color: "#1f2937" },
@@ -2383,10 +2382,10 @@ function renderAppHtml(env, url) {
       const shareColor = card.shareColor || "#ef4444";
       const shareActionUrl = appendShareMode(url);
       const actionButtons = Array.isArray(card.buttons) ? card.buttons : getCardButtons();
-      const buttons = [
-        { label: "查看名片", url, color: "#06C755" },
-        ...actionButtons,
-      ].map((button, index) => ({ ...button, url: flexHttpsUri(button.url, index === 0 ? url : "") })).filter((button) => button.url).slice(0, 4);
+      const buttons = actionButtons
+        .map((button) => ({ ...button, url: flexHttpsUri(button.url, url) }))
+        .filter((button) => button.url)
+        .slice(0, 4);
       const bubble = {
         type: "bubble",
         size: card.layout === "full" ? "giga" : "mega",
@@ -3487,11 +3486,9 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       const meta = publicFlexText(card.meta, "SDK 名片王", 100);
       const shareLabel = publicFlexText(card.shareLabel, "分享", 16).replace(/^https?:\\/\\/.*/i, "分享");
       const shareColor = card.shareColor || "#ef4444";
-      const buttons = [
-        { label: "查看名片", url: shareConfig.url, color: "#06C755" },
-        ...(Array.isArray(card.buttons) ? card.buttons : []),
-      ].filter((button) => button && button.label && button.url)
-        .map((button, index) => ({ ...button, url: publicFlexHttpsUri(button.url, index === 0 ? shareConfig.url : "") }))
+      const buttons = (Array.isArray(card.buttons) ? card.buttons : [])
+        .filter((button) => button && button.label && button.url)
+        .map((button) => ({ ...button, url: publicFlexHttpsUri(button.url, shareConfig.url) }))
         .filter((button) => button.url)
         .slice(0, 4);
       const bubble = {
@@ -3800,7 +3797,6 @@ function normalizeCardButtons(buttons, fallback = {}) {
       color: "#1f2937",
     });
   }
-  if (fallback.website) defaults.push({ label: "開啟網站", url: normalizeUrl(fallback.website), color: "#06c755" });
   return defaults.slice(0, 6);
 }
 
