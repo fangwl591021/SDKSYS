@@ -2418,6 +2418,17 @@ function renderAppHtml(env, url) {
       }
     }
 
+    function buildLiffShareUrl(liffId, url) {
+      if (!liffId || !url) return appendShareMode(url);
+      try {
+        const target = new URL(appendShareMode(url), location.origin);
+        target.searchParams.set("viaLiff", "1");
+        return "https://liff.line.me/" + encodeURIComponent(liffId) + target.pathname + target.search + target.hash;
+      } catch (error) {
+        return appendShareMode(url);
+      }
+    }
+
     function flexHttpsUri(value, fallback) {
       const uri = String(value || "").trim();
       if (/^https:\\/\\//i.test(uri) || /^tel:/i.test(uri)) return uri;
@@ -2432,7 +2443,7 @@ function renderAppHtml(env, url) {
       const intro = flexText(card.intro || meta || url, "點擊查看完整名片", 180);
       const shareLabel = cleanShareLabelInput(card.shareLabel);
       const shareColor = card.shareColor || "#ef4444";
-      const shareActionUrl = appendShareMode(url);
+      const shareActionUrl = buildLiffShareUrl(config.liffId, url);
       const actionButtons = Array.isArray(card.buttons) ? card.buttons : getCardButtons();
       const buttons = actionButtons
         .map((button) => ({ ...button, url: flexHttpsUri(button.url, url) }))
@@ -3556,12 +3567,21 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       }
     }
 
+    function buildPublicLiffShareUrl(liffId, url) {
+      if (!liffId || !url) return appendPublicShareMode(url);
+      try {
+        const target = new URL(appendPublicShareMode(url), location.origin);
+        target.searchParams.set("viaLiff", "1");
+        return "https://liff.line.me/" + encodeURIComponent(liffId) + target.pathname + target.search + target.hash;
+      } catch (error) {
+        return appendPublicShareMode(url);
+      }
+    }
+
     function openPublicShareInLiff() {
       if (!shareConfig.liffId) return false;
       try {
-        const target = new URL(appendPublicShareMode(shareConfig.url || location.href), location.origin);
-        target.searchParams.set("viaLiff", "1");
-        location.href = "https://liff.line.me/" + encodeURIComponent(shareConfig.liffId) + target.pathname + target.search + target.hash;
+        location.href = buildPublicLiffShareUrl(shareConfig.liffId, shareConfig.url || location.href);
         return true;
       } catch (error) {
         return false;
@@ -3591,7 +3611,7 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
 
     function buildPublicShareMessage() {
       const card = shareConfig.card || {};
-      const shareActionUrl = appendPublicShareMode(shareConfig.url);
+      const shareActionUrl = buildPublicLiffShareUrl(shareConfig.liffId, shareConfig.url);
       const name = publicFlexText(card.name, "我的名片", 80);
       const meta = publicFlexText(card.meta, "SDK 名片王", 100);
       const shareLabel = publicFlexText(card.shareLabel, "分享", 16).replace(/^https?:\\/\\/.*/i, "分享");
@@ -3881,8 +3901,11 @@ function parseLiffStateCardRoute(url) {
   if (!raw) return null;
   try {
     const stateUrl = new URL(raw.startsWith("/") ? raw : `/${raw}`, url.origin);
-    if (!stateUrl.pathname.startsWith("/card/")) return null;
-    return parseCardRoute(stateUrl.pathname);
+    const pathname = stateUrl.pathname.startsWith("/app/card/")
+      ? stateUrl.pathname.slice("/app".length)
+      : stateUrl.pathname;
+    if (!pathname.startsWith("/card/")) return null;
+    return parseCardRoute(pathname);
   } catch {
     return null;
   }
