@@ -2227,9 +2227,11 @@ function renderAppHtml(env, url) {
       }
       try {
         if (window.liff && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
-          await liff.shareTargetPicker([{ type: "text", text: libraryCardTitle(currentLibraryCard) + " 的名片\\n" + shareUrl }]);
+          await liff.shareTargetPicker([buildCardFlexMessage(liveCard, shareUrl)]);
+          setStatus("已開啟 LINE 分享");
           return;
         }
+        setStatus("LINE 目前不支援開啟分享名單，請從 LINE LIFF 內開啟。");
       } catch (error) {}
       await navigator.clipboard.writeText(shareUrl);
       setStatus("名片網址已複製");
@@ -2380,9 +2382,10 @@ function renderAppHtml(env, url) {
       const shareLabel = cleanShareLabelInput(card.shareLabel);
       const shareColor = card.shareColor || "#ef4444";
       const shareActionUrl = appendShareMode(url);
+      const actionButtons = Array.isArray(card.buttons) ? card.buttons : getCardButtons();
       const buttons = [
         { label: "查看名片", url, color: "#06C755" },
-        ...getCardButtons(),
+        ...actionButtons,
       ].map((button, index) => ({ ...button, url: flexHttpsUri(button.url, index === 0 ? url : "") })).filter((button) => button.url).slice(0, 4);
       const bubble = {
         type: "bubble",
