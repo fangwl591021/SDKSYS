@@ -49,6 +49,12 @@ export default {
         return html(renderAppHtml(env, url));
       }
 
+      if (url.pathname.startsWith("/app/card/") && request.method === "GET") {
+        const storage = createWasabiClient(env);
+        const route = parseCardRoute(url.pathname.slice("/app".length));
+        return html(await renderPublicCardHtml(storage, route.slug, url.origin, route.layout, env.LINE_LIFF_ID || ""));
+      }
+
       if (url.pathname.startsWith("/card/") && request.method === "GET") {
         const storage = createWasabiClient(env);
         const route = parseCardRoute(url.pathname);
@@ -3525,6 +3531,18 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
       }
     }
 
+    function openPublicShareInLiff() {
+      if (!shareConfig.liffId) return false;
+      try {
+        const target = new URL(appendPublicShareMode(shareConfig.url || location.href), location.origin);
+        target.searchParams.set("viaLiff", "1");
+        location.href = "https://liff.line.me/" + encodeURIComponent(shareConfig.liffId) + target.pathname + target.search + target.hash;
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
     function publicFlexHttpsUri(value, fallback) {
       const uri = String(value || "").trim();
       if (/^https:\\/\\//i.test(uri) || /^tel:/i.test(uri)) return uri;
@@ -3631,6 +3649,10 @@ function renderPublicCardShell(card, origin, layout = DEFAULT_CARD_LAYOUT, liffI
           }
         }
       } catch (error) {}
+      const params = new URLSearchParams(location.search);
+      if (shareConfig.liffId && params.get("viaLiff") !== "1") {
+        if (openPublicShareInLiff()) return;
+      }
       location.href = "https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(shareConfig.url || location.href);
     }
 
