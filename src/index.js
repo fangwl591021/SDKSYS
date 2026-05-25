@@ -443,6 +443,59 @@ function renderAppHtml(env, url) {
     }
     button:hover { filter: brightness(.97); }
     button:disabled { cursor: not-allowed; background: #9aa8b4; }
+    button.is-processing {
+      position: relative;
+      pointer-events: none;
+      filter: saturate(.85);
+    }
+    button.is-processing::after {
+      content: "";
+      width: 16px;
+      height: 16px;
+      margin-left: 8px;
+      border: 2px solid rgba(255,255,255,.55);
+      border-top-color: #fff;
+      border-radius: 999px;
+      display: inline-block;
+      vertical-align: -3px;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .action-busy {
+      position: fixed;
+      left: 50%;
+      bottom: 92px;
+      z-index: 80;
+      transform: translateX(-50%) translateY(14px);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      max-width: min(480px, calc(100% - 32px));
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, .94);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 800;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, .25);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .action-busy.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .action-busy::before {
+      content: "";
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,.45);
+      border-top-color: #fff;
+      border-radius: 999px;
+      animation: spin .7s linear infinite;
+    }
     .status {
       min-height: 44px;
       margin-top: 16px;
@@ -1352,9 +1405,11 @@ function renderAppHtml(env, url) {
       </div>
     </div>
   </div>
+  <div class="action-busy" id="actionBusy" role="status" aria-live="polite">處理中...</div>
   <script>
     const config = ${JSON.stringify({ storeCode, referralCode, liffId })};
     const statusEl = document.getElementById("status");
+    const actionBusyEl = document.getElementById("actionBusy");
     const loginButton = document.getElementById("loginButton");
     const memberEl = document.getElementById("member");
     const cardSdkEl = document.getElementById("cardSdk");
@@ -1383,10 +1438,88 @@ function renderAppHtml(env, url) {
     let activeLibraryLayout = "standard";
     let libraryButtons = [];
     let selectedLibraryImages = {};
+    let processingCount = 0;
+    let processingHideTimer = null;
+    let processingButtonTimer = null;
+    let processingButton = null;
 
     function setStatus(text) {
       statusEl.textContent = text;
+      const message = String(text || "");
+      if (/正在|處理中/.test(message)) {
+        showProcessing(message);
+      } else if (/完成|已|失敗|請|無法|尚未|準備/.test(message)) {
+        hideProcessing();
+      }
     }
+
+    function showProcessing(message = "處理中...") {
+      if (processingHideTimer) clearTimeout(processingHideTimer);
+      actionBusyEl.textContent = message;
+      actionBusyEl.classList.add("visible");
+    }
+
+    function hideProcessing() {
+      if (processingCount > 0) return;
+      if (processingHideTimer) clearTimeout(processingHideTimer);
+      processingHideTimer = setTimeout(() => {
+        if (processingCount <= 0) actionBusyEl.classList.remove("visible");
+      }, 220);
+    }
+
+    function markButtonProcessing(button) {
+      if (!button || button.matches(".nav-button, .round-icon, .icon-button") || button.id === "loginButton") return;
+      if (processingButton && processingButton !== button) clearButtonProcessing(processingButton);
+      processingButton = button;
+      if (!button.dataset.originalHtml) button.dataset.originalHtml = button.innerHTML;
+      button.classList.add("is-processing");
+      button.disabled = true;
+      button.textContent = "處理中...";
+    }
+
+    function clearButtonProcessing(button) {
+      if (!button) return;
+      if (button.dataset.originalHtml) {
+        button.innerHTML = button.dataset.originalHtml;
+        delete button.dataset.originalHtml;
+      }
+      button.classList.remove("is-processing");
+      button.disabled = false;
+      if (processingButton === button) processingButton = null;
+    }
+
+    function finishTransientButton(button) {
+      if (processingButtonTimer) clearTimeout(processingButtonTimer);
+      processingButtonTimer = setTimeout(() => {
+        if (processingCount <= 0) {
+          clearButtonProcessing(button);
+          hideProcessing();
+        }
+      }, 700);
+    }
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button || button.disabled) return;
+      showProcessing("處理中...");
+      markButtonProcessing(button);
+      finishTransientButton(button);
+    }, true);
+
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      processingCount += 1;
+      showProcessing("資料處理中...");
+      try {
+        return await nativeFetch(...args);
+      } finally {
+        processingCount = Math.max(0, processingCount - 1);
+        if (processingCount <= 0) {
+          clearButtonProcessing(processingButton);
+          hideProcessing();
+        }
+      }
+    };
 
     function escapeHtmlClient(value) {
       return String(value || "")
